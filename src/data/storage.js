@@ -198,12 +198,12 @@ export function saveState({ clients, columns, tasks }) {
 // Záloha do souboru a obnova
 // ---------------------------------------------------------------------------
 export function exportBackup({ clients, columns, tasks }) {
-  const data = { app: 'freelance-manager', version: DATA_VERSION, exportedAt: new Date().toISOString(), clients, columns, tasks }
+  const data = { app: 'client-manager', version: DATA_VERSION, exportedAt: new Date().toISOString(), clients, columns, tasks }
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `freelance-manager-zaloha-${new Date().toISOString().slice(0, 10)}.json`
+  a.download = `client-manager-zaloha-${new Date().toISOString().slice(0, 10)}.json`
   a.click()
   URL.revokeObjectURL(url)
 }

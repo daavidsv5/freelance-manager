@@ -90,7 +90,7 @@ export default function Sidebar({
       <div className="px-4 py-4 md:py-5 border-b border-slate-200 dark:border-slate-700">
         <div className="flex items-center gap-2">
           <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm flex-1">Freelance Manager</span>
+          <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm flex-1">Client manager</span>
           <button onClick={onClose} className="md:hidden p-1.5 -mr-1.5 rounded-lg text-slate-400 active:bg-slate-100 dark:active:bg-slate-700" title="Zavřít">
             <X className="w-5 h-5" />
           </button>
