@@ -1,29 +1,22 @@
-import { useState, useEffect } from 'react'
-import { Plus, ArrowUpDown, AlertTriangle, Calendar, X, Sun, Moon } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, ArrowUpDown, AlertTriangle, Calendar, X, Sun, Moon, Search, Undo2 } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import KanbanBoard from './components/KanbanBoard'
 import TaskModal from './components/TaskModal'
 import Dashboard from './components/Dashboard'
-import { loadClients, saveClients, loadTasks, saveTasks, generateId } from './data/storage'
+import ArchiveView from './components/ArchiveView'
+import ConfirmDialog from './components/ConfirmDialog'
+import { loadState, saveState, generateId, exportBackup, parseBackup } from './data/storage'
+import { nextFreeColor } from './data/clientColors'
+import { advanceDueDate, isOverdue, toISODate } from './data/dates'
 
 const SORT_OPTIONS = [
-  { value: 'default', label: 'Výchozí řazení' },
+  { value: 'default', label: 'Vlastní pořadí' },
   { value: 'priority', label: 'Podle priority' },
   { value: 'dueDate', label: 'Podle termínu' },
 ]
 
 const PRIORITY_ORDER = { 'Vysoká': 0, 'Střední': 1, 'Nízká': 2 }
-
-function advanceDueDate(dueDate, recurrence) {
-  if (!dueDate) return dueDate
-  const d = new Date(dueDate)
-  if (recurrence === 'Týdenní') {
-    d.setDate(d.getDate() + 7)
-  } else if (recurrence === 'Měsíční') {
-    d.setMonth(d.getMonth() + 1)
-  }
-  return d.toISOString().slice(0, 10)
-}
 
 function sortTasks(tasks, sortBy) {
   if (sortBy === 'priority') {
@@ -34,139 +27,295 @@ function sortTasks(tasks, sortBy) {
       if (!a.dueDate && !b.dueDate) return 0
       if (!a.dueDate) return 1
       if (!b.dueDate) return -1
-      return new Date(a.dueDate) - new Date(b.dueDate)
+      return a.dueDate.localeCompare(b.dueDate)
     })
   }
   return tasks
 }
 
+const plural = (n, one, few, many) => (n === 1 ? one : n >= 2 && n <= 4 ? few : many)
+
 export default function App() {
-  const [clients, setClients] = useState([])
-  const [tasks, setTasks] = useState([])
+  const [initial] = useState(loadState)
+  const [clients, setClients] = useState(initial.clients)
+  const [columns, setColumns] = useState(initial.columns)
+  const [tasks, setTasks] = useState(initial.tasks)
+
+  const [view, setView] = useState('board') // 'board' | 'archive'
   const [selectedClient, setSelectedClient] = useState(null)
   const [sortBy, setSortBy] = useState('default')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingTask, setEditingTask] = useState(null)
-  const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem('ppc_dark') === 'true'
-  })
+  const [search, setSearch] = useState('')
+  const [modal, setModal] = useState(null) // { task } nebo { defaults }
+  const [confirm, setConfirm] = useState(null)
+  const [toast, setToast] = useState(null)
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ppc_dark') === 'true')
 
+  // Ukládání do localStorage při každé změně
   useEffect(() => {
-    setClients(loadClients())
-    setTasks(loadTasks())
-  }, [])
+    saveState({ clients, columns, tasks })
+  }, [clients, columns, tasks])
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
     localStorage.setItem('ppc_dark', darkMode)
   }, [darkMode])
 
-  function handleSaveClients(updated) {
-    setClients(updated)
-    saveClients(updated)
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 6000)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  const showToast = useCallback((message, undo) => setToast({ id: generateId(), message, undo }), [])
+  const closeModal = useCallback(() => setModal(null), [])
+  const closeConfirm = useCallback(() => setConfirm(null), [])
+
+  // ---------------------------------------------------------------- Klienti
+  function handleAddClient(name, color) {
+    setClients(prev => [...prev, { id: generateId(), name, color }])
   }
 
-  function handleAddClient(name) {
-    const updated = [...clients, { id: generateId(), name }]
-    handleSaveClients(updated)
+  function handleUpdateClient(id, patch) {
+    setClients(prev => prev.map(c => (c.id === id ? { ...c, ...patch } : c)))
   }
 
-  function handleRenameClient(id, name) {
-    const updated = clients.map(c => c.id === id ? { ...c, name } : c)
-    handleSaveClients(updated)
-  }
-
-  function handleSaveTask(form) {
-    let taskData = { ...form }
-    if (form.status === 'Hotovo' && taskData.recurrence && taskData.recurrence !== 'Jednorázový') {
-      taskData = { ...taskData, status: 'K řešení', dueDate: advanceDueDate(taskData.dueDate, taskData.recurrence) }
-    }
-    let updated
-    if (editingTask) {
-      updated = tasks.map(t => t.id === editingTask.id ? { ...t, ...taskData } : t)
-    } else {
-      updated = [...tasks, { ...taskData, id: generateId() }]
-    }
-    setTasks(updated)
-    saveTasks(updated)
-    setModalOpen(false)
-    setEditingTask(null)
-  }
-
-  function handleDeleteTask(id) {
-    const updated = tasks.filter(t => t.id !== id)
-    setTasks(updated)
-    saveTasks(updated)
-  }
-
-  function handleDeleteAllByStatus(status) {
-    const updated = tasks.filter(t => t.status !== status)
-    setTasks(updated)
-    saveTasks(updated)
-  }
-
-  function handleStatusChange(id, newStatus) {
-    const updated = tasks.map(t => {
-      if (t.id !== id) return t
-      if (newStatus === 'Hotovo' && t.recurrence && t.recurrence !== 'Jednorázový') {
-        return { ...t, status: 'K řešení', dueDate: advanceDueDate(t.dueDate, t.recurrence) }
-      }
-      return { ...t, status: newStatus }
+  function handleDeleteClient(client) {
+    const count = tasks.filter(t => !t.archived && t.clientId === client.id).length
+    setConfirm({
+      title: `Smazat klienta „${client.name}“?`,
+      message: count
+        ? `Klient má ${count} ${plural(count, 'aktivní úkol', 'aktivní úkoly', 'aktivních úkolů')}. Úkoly zůstanou na nástěnce bez klienta.`
+        : 'Klient nemá žádné aktivní úkoly.',
+      confirmLabel: 'Smazat klienta',
+      onConfirm: () => {
+        setClients(prev => prev.filter(c => c.id !== client.id))
+        setTasks(prev => prev.map(t => (t.clientId === client.id ? { ...t, clientId: '' } : t)))
+        if (selectedClient === client.id) setSelectedClient(null)
+      },
     })
-    setTasks(updated)
-    saveTasks(updated)
   }
 
-  function openNew() {
-    setEditingTask(null)
-    setModalOpen(true)
+  // ---------------------------------------------------------------- Sloupce
+  function handleAddColumn(name) {
+    setColumns(prev => [...prev, { id: generateId(), name, color: nextFreeColor(prev) }])
   }
 
-  function openEdit(task) {
-    setEditingTask(task)
-    setModalOpen(true)
+  function handleUpdateColumn(id, patch) {
+    setColumns(prev => prev.map(c => (c.id === id ? { ...c, ...patch } : c)))
   }
 
-  const filteredTasks = tasks.filter(t => {
-    if (selectedClient && t.clientId !== selectedClient) return false
-    if (dateFrom && t.dueDate && t.dueDate < dateFrom) return false
-    if (dateTo && t.dueDate && t.dueDate > dateTo) return false
-    if ((dateFrom || dateTo) && !t.dueDate) return false
+  function handleMoveColumn(id, dir) {
+    setColumns(prev => {
+      const i = prev.findIndex(c => c.id === id)
+      const j = i + dir
+      if (i < 0 || j < 0 || j >= prev.length) return prev
+      const next = [...prev]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      return next
+    })
+  }
+
+  function handleDeleteColumn(column) {
+    if (columns.length <= 1) return
+    const target = columns.find(c => c.id !== column.id)
+    const count = tasks.filter(t => !t.archived && t.columnId === column.id).length
+    setConfirm({
+      title: `Smazat sloupec „${column.name}“?`,
+      message: count
+        ? `Ve sloupci ${plural(count, 'je', 'jsou', 'je')} ${count} ${plural(count, 'úkol', 'úkoly', 'úkolů')}. Přesunou se do sloupce „${target.name}“.`
+        : 'Sloupec je prázdný.',
+      confirmLabel: 'Smazat sloupec',
+      onConfirm: () => {
+        setTasks(prev => prev.map(t => (t.columnId === column.id ? { ...t, columnId: target.id } : t)))
+        setColumns(prev => prev.filter(c => c.id !== column.id))
+      },
+    })
+  }
+
+  // ---------------------------------------------------------------- Úkoly
+  function handleSaveTask(form) {
+    if (modal?.task) {
+      setTasks(prev => prev.map(t => (t.id === modal.task.id ? { ...t, ...form } : t)))
+    } else {
+      setTasks(prev => [...prev, { ...form, id: generateId(), archived: false, completedAt: null }])
+    }
+    setModal(null)
+  }
+
+  function handleQuickAdd(columnId, title) {
+    setTasks(prev => [...prev, {
+      id: generateId(), title, description: '', clientId: selectedClient || '', priority: 'Střední',
+      dueDate: '', columnId, recurrence: 'Jednorázový', checklist: [], archived: false, completedAt: null,
+    }])
+  }
+
+  // Přesun úkolu (drag & drop): do sloupce columnId, před úkol beforeId (null = na konec)
+  function handleMoveTask(taskId, columnId, beforeId) {
+    if (taskId === beforeId) return
+    setTasks(prev => {
+      const task = prev.find(t => t.id === taskId)
+      if (!task) return prev
+      const rest = prev.filter(t => t.id !== taskId)
+      const moved = { ...task, columnId }
+      let index = beforeId ? rest.findIndex(t => t.id === beforeId) : -1
+      if (index === -1) index = rest.length
+      rest.splice(index, 0, moved)
+      return rest
+    })
+  }
+
+  // Odškrtnutí: úkol jde do archivu. Opakovaný úkol se zároveň vrátí s dalším termínem.
+  function handleCompleteTask(id) {
+    const task = tasks.find(t => t.id === id)
+    if (!task) return
+    const completedAt = new Date().toISOString()
+    const recurring = task.recurrence && task.recurrence !== 'Jednorázový'
+    const copyId = recurring ? generateId() : null
+
+    setTasks(prev => {
+      if (!recurring) return prev.map(t => (t.id === id ? { ...t, archived: true, completedAt } : t))
+      const archivedCopy = { ...task, id: copyId, archived: true, completedAt }
+      const next = {
+        ...task,
+        dueDate: advanceDueDate(task.dueDate, task.recurrence),
+        columnId: columns[0]?.id || task.columnId,
+        checklist: (task.checklist || []).map(i => ({ ...i, done: false })),
+      }
+      return [...prev.map(t => (t.id === id ? next : t)), archivedCopy]
+    })
+
+    showToast(
+      recurring ? `„${task.title}“ splněno, další termín je naplánován` : `„${task.title}“ přesunuto do archivu`,
+      () => setTasks(prev => prev.filter(t => t.id !== copyId).map(t => (t.id === id ? task : t)))
+    )
+  }
+
+  function handleRestoreTask(id) {
+    setTasks(prev => prev.map(t => {
+      if (t.id !== id) return t
+      const columnId = columns.some(c => c.id === t.columnId) ? t.columnId : columns[0]?.id
+      return { ...t, archived: false, completedAt: null, columnId }
+    }))
+    showToast('Úkol vrácen na nástěnku')
+  }
+
+  function handleDeleteTask(task) {
+    const index = tasks.findIndex(t => t.id === task.id)
+    setTasks(prev => prev.filter(t => t.id !== task.id))
+    showToast(`„${task.title}“ smazáno`, () =>
+      setTasks(prev => {
+        const next = [...prev]
+        next.splice(Math.min(index, next.length), 0, task)
+        return next
+      })
+    )
+  }
+
+  function handleClearArchive() {
+    const toRemove = tasks.filter(t => t.archived && (!selectedClient || t.clientId === selectedClient))
+    if (!toRemove.length) return
+    const clientLabel = selectedClient ? ` klienta ${clients.find(c => c.id === selectedClient)?.name}` : ''
+    setConfirm({
+      title: 'Vysypat archiv?',
+      message: `Natrvalo se smaže ${toRemove.length} ${plural(toRemove.length, 'splněný úkol', 'splněné úkoly', 'splněných úkolů')}${clientLabel}. Tuto akci nelze vrátit.`,
+      confirmLabel: 'Smazat natrvalo',
+      onConfirm: () => {
+        const ids = new Set(toRemove.map(t => t.id))
+        setTasks(prev => prev.filter(t => !ids.has(t.id)))
+      },
+    })
+  }
+
+  // ---------------------------------------------------------------- Záloha
+  function handleExport() {
+    exportBackup({ clients, columns, tasks })
+  }
+
+  function handleImport(file) {
+    file.text().then(text => {
+      let data
+      try {
+        data = parseBackup(text)
+      } catch (err) {
+        setConfirm({ title: 'Zálohu nejde načíst', message: err.message, confirmLabel: 'Rozumím', danger: false, onConfirm: () => {} })
+        return
+      }
+      setConfirm({
+        title: 'Nahrát data ze zálohy?',
+        message: `Záloha obsahuje ${data.clients.length} klientů, ${data.columns.length} sloupců a ${data.tasks.length} úkolů.\nSoučasná data se nahradí. Doporučujeme si je nejdřív stáhnout.`,
+        confirmLabel: 'Nahradit data',
+        onConfirm: () => {
+          setClients(data.clients)
+          setColumns(data.columns)
+          setTasks(data.tasks)
+          setSelectedClient(null)
+          showToast('Data ze zálohy nahrána')
+        },
+      })
+    })
+  }
+
+  // ---------------------------------------------------------------- Filtry
+  const clientNames = Object.fromEntries(clients.map(c => [c.id, c.name]))
+  const query = search.trim().toLowerCase()
+
+  function matchesSearch(t) {
+    if (!query) return true
+    return [t.title, t.description, clientNames[t.clientId], ...(t.checklist || []).map(i => i.text)]
+      .some(v => v && v.toLowerCase().includes(query))
+  }
+
+  function matchesDate(dateStr) {
+    if (!dateFrom && !dateTo) return true
+    if (!dateStr) return false
+    if (dateFrom && dateStr < dateFrom) return false
+    if (dateTo && dateStr > dateTo) return false
     return true
-  })
+  }
 
+  const byClientAndSearch = tasks.filter(t => (!selectedClient || t.clientId === selectedClient) && matchesSearch(t))
+  const activeTasks = byClientAndSearch.filter(t => !t.archived)
+  const archivedTasks = byClientAndSearch.filter(t => t.archived)
+  const boardTasks = sortTasks(activeTasks.filter(t => matchesDate(t.dueDate)), sortBy)
+  const archiveList = archivedTasks.filter(t => matchesDate(t.completedAt ? toISODate(new Date(t.completedAt)) : ''))
+
+  const overdueCount = activeTasks.filter(isOverdue).length
   const dateFilterActive = dateFrom || dateTo
-  const sortedTasks = sortTasks(filteredTasks, sortBy)
-
-  const overdueCount = filteredTasks.filter(t => {
-    if (!t.dueDate || t.status === 'Hotovo' || t.status === 'Probíhá') return false
-    return new Date(t.dueDate) < new Date(new Date().toDateString())
-  }).length
-
-  const clientName = selectedClient
-    ? clients.find(c => c.id === selectedClient)?.name
-    : 'Všichni klienti'
+  const clientName = selectedClient ? clientNames[selectedClient] : 'Všichni klienti'
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
       <Sidebar
         clients={clients}
+        tasks={tasks}
+        view={view}
+        onChangeView={setView}
         selectedClient={selectedClient}
         onSelectClient={setSelectedClient}
         onAddClient={handleAddClient}
-        onRenameClient={handleRenameClient}
+        onUpdateClient={handleUpdateClient}
+        onDeleteClient={handleDeleteClient}
+        onExport={handleExport}
+        onImport={handleImport}
       />
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-8 py-5 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">{clientName}</h1>
+        {/* Hlavička */}
+        <div className="flex flex-wrap items-center justify-between gap-4 px-8 py-5 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 truncate">
+              {clientName}
+              {view === 'archive' && <span className="text-slate-400 dark:text-slate-500 font-normal"> · Archiv</span>}
+            </h1>
             <div className="flex items-center gap-3 mt-0.5">
-              <span className="text-sm text-slate-500 dark:text-slate-400">{filteredTasks.length} úkolů celkem</span>
-              {overdueCount > 0 && (
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                {view === 'board'
+                  ? `${boardTasks.length} ${plural(boardTasks.length, 'aktivní úkol', 'aktivní úkoly', 'aktivních úkolů')}`
+                  : `${archiveList.length} ${plural(archiveList.length, 'splněný úkol', 'splněné úkoly', 'splněných úkolů')}`}
+              </span>
+              {view === 'board' && overdueCount > 0 && (
                 <span className="flex items-center gap-1 text-xs text-red-600 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 px-2 py-0.5 rounded-full font-medium">
                   <AlertTriangle className="w-3 h-3" />
                   {overdueCount} po termínu
@@ -175,15 +324,34 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Filtr termínu */}
-            <div className={`flex items-center gap-2 border rounded-lg px-3 py-2 ${dateFilterActive ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 dark:border-indigo-700' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'}`}>
-              <Calendar className={`w-3.5 h-3.5 flex-shrink-0 ${dateFilterActive ? 'text-indigo-500' : 'text-slate-400 dark:text-slate-400'}`} />
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Hledání */}
+            <div className={`flex items-center gap-2 border rounded-lg px-3 py-2 ${query ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 dark:border-indigo-700' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'}`}>
+              <Search className={`w-3.5 h-3.5 flex-shrink-0 ${query ? 'text-indigo-500' : 'text-slate-400'}`} />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => e.key === 'Escape' && setSearch('')}
+                placeholder="Hledat úkol…"
+                className="text-sm text-slate-600 dark:text-slate-200 outline-none bg-transparent w-40 placeholder-slate-400"
+              />
+              {query && (
+                <button onClick={() => setSearch('')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Filtr data */}
+            <div
+              title={view === 'board' ? 'Filtr podle termínu' : 'Filtr podle data splnění'}
+              className={`flex items-center gap-2 border rounded-lg px-3 py-2 ${dateFilterActive ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 dark:border-indigo-700' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'}`}
+            >
+              <Calendar className={`w-3.5 h-3.5 flex-shrink-0 ${dateFilterActive ? 'text-indigo-500' : 'text-slate-400'}`} />
               <input
                 type="date"
                 value={dateFrom}
                 onChange={e => setDateFrom(e.target.value)}
-                title="Termín od"
                 className="text-sm text-slate-600 dark:text-slate-300 outline-none bg-transparent w-32 dark:[color-scheme:dark]"
               />
               <span className="text-slate-300 dark:text-slate-500 text-sm">–</span>
@@ -191,7 +359,6 @@ export default function App() {
                 type="date"
                 value={dateTo}
                 onChange={e => setDateTo(e.target.value)}
-                title="Termín do"
                 className="text-sm text-slate-600 dark:text-slate-300 outline-none bg-transparent w-32 dark:[color-scheme:dark]"
               />
               {dateFilterActive && (
@@ -202,20 +369,21 @@ export default function App() {
             </div>
 
             {/* Řazení */}
-            <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700">
-              <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 dark:text-slate-300" />
-              <select
-                value={sortBy}
-                onChange={e => setSortBy(e.target.value)}
-                className="text-sm text-slate-600 dark:text-slate-100 outline-none bg-transparent dark:[color-scheme:dark]"
-              >
-                {SORT_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
+            {view === 'board' && (
+              <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 dark:text-slate-300" />
+                <select
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value)}
+                  className="text-sm text-slate-600 dark:text-slate-100 outline-none bg-transparent dark:[color-scheme:dark]"
+                >
+                  {SORT_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            {/* Dark mode toggle */}
             <button
               onClick={() => setDarkMode(d => !d)}
               className="p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
@@ -225,7 +393,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={openNew}
+              onClick={() => setModal({ defaults: { clientId: selectedClient || '' } })}
               className="flex items-center gap-2 bg-green-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-green-700 transition-colors font-medium"
             >
               <Plus className="w-4 h-4" />
@@ -234,28 +402,74 @@ export default function App() {
           </div>
         </div>
 
-        <Dashboard tasks={filteredTasks} />
-
-        {/* Board */}
-        <div className="flex-1 overflow-auto px-8 py-6">
-          <KanbanBoard
-            tasks={sortedTasks}
-            clients={clients}
-            onEdit={openEdit}
-            onDelete={handleDeleteTask}
-            onDeleteAll={handleDeleteAllByStatus}
-            onStatusChange={handleStatusChange}
-          />
-        </div>
+        {view === 'board' ? (
+          <>
+            <Dashboard tasks={activeTasks} archived={archivedTasks} />
+            <div className="flex-1 overflow-auto px-8 py-6">
+              <KanbanBoard
+                columns={columns}
+                tasks={boardTasks}
+                clients={clients}
+                onEditTask={task => setModal({ task })}
+                onDeleteTask={handleDeleteTask}
+                onCompleteTask={handleCompleteTask}
+                onMoveTask={handleMoveTask}
+                onQuickAdd={handleQuickAdd}
+                onAddColumn={handleAddColumn}
+                onUpdateColumn={handleUpdateColumn}
+                onMoveColumn={handleMoveColumn}
+                onDeleteColumn={handleDeleteColumn}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 overflow-auto px-8 py-6">
+            <ArchiveView
+              tasks={archiveList}
+              clients={clients}
+              onRestore={handleRestoreTask}
+              onDelete={handleDeleteTask}
+              onOpen={task => setModal({ task })}
+              onClear={handleClearArchive}
+            />
+          </div>
+        )}
       </main>
 
-      {modalOpen && (
+      {modal && (
         <TaskModal
-          task={editingTask}
+          task={modal.task}
+          defaults={modal.defaults}
           clients={clients}
+          columns={columns}
           onSave={handleSaveTask}
-          onClose={() => { setModalOpen(false); setEditingTask(null) }}
+          onClose={closeModal}
         />
+      )}
+
+      {confirm && (
+        <ConfirmDialog
+          {...confirm}
+          onConfirm={() => { confirm.onConfirm(); setConfirm(null) }}
+          onCancel={closeConfirm}
+        />
+      )}
+
+      {toast && (
+        <div key={toast.id} className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 bg-slate-900 dark:bg-slate-700 text-white text-sm pl-4 pr-2 py-2 rounded-xl shadow-lg max-w-[90vw]">
+          <span className="truncate">{toast.message}</span>
+          {toast.undo && (
+            <button
+              onClick={() => { toast.undo(); setToast(null) }}
+              className="flex items-center gap-1 text-indigo-300 hover:text-white font-medium px-2 py-1 rounded-lg hover:bg-white/10 flex-shrink-0"
+            >
+              <Undo2 className="w-3.5 h-3.5" /> Vrátit
+            </button>
+          )}
+          <button onClick={() => setToast(null)} className="p-1 text-slate-400 hover:text-white flex-shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
     </div>
   )

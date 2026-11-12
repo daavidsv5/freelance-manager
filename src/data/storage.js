@@ -1,3 +1,5 @@
+import { LEGACY_ORDER } from './clientColors'
+
 export const SEED_CLIENTS = [
   { id: '1', name: 'Sportega' },
   { id: '2', name: 'Flystork' },
@@ -11,19 +13,6 @@ export const SEED_CLIENTS = [
   { id: '10', name: 'Tiny House' },
   { id: '11', name: 'Zboží z Bali' },
 ]
-
-export function loadClients() {
-  const stored = localStorage.getItem('ppc_clients')
-  if (!stored) {
-    localStorage.setItem('ppc_clients', JSON.stringify(SEED_CLIENTS))
-    return SEED_CLIENTS
-  }
-  return JSON.parse(stored)
-}
-
-export function saveClients(clients) {
-  localStorage.setItem('ppc_clients', JSON.stringify(clients))
-}
 
 export const SEED_TASKS = [
   { id: 'mmfdfvde9kyv9s5z6ic', title: 'Věrnostní program - Popis kategorie', description: 'PL', clientId: '7', priority: 'Střední', dueDate: '2026-03-11', status: 'Probíhá', recurrence: 'Jednorázový' },
@@ -90,19 +79,153 @@ export const SEED_TASKS = [
   { id: 'mmoxkdl4ox04txxae6a', title: 'Reels - post - zasponzorovat', description: '', clientId: '3', priority: 'Střední', dueDate: '2026-03-16', status: 'K řešení', recurrence: 'Jednorázový' },
 ]
 
-export function loadTasks() {
-  const stored = localStorage.getItem('ppc_tasks')
-  if (!stored) {
-    localStorage.setItem('ppc_tasks', JSON.stringify(SEED_TASKS))
-    return SEED_TASKS
-  }
-  return JSON.parse(stored)
+// ---------------------------------------------------------------------------
+// Verze dat
+//   1 = původní: Task.status ('K řešení' | 'Probíhá' | 'Hotovo'), barva klienta podle pořadí
+//   2 = vlastní sloupce (Task.columnId), barva uložená u klienta, archiv (Task.archived),
+//       podúkoly (Task.checklist)
+// ---------------------------------------------------------------------------
+const DATA_VERSION = 2
+
+const KEYS = {
+  clients: 'ppc_clients',
+  tasks: 'ppc_tasks',
+  columns: 'ppc_columns',
+  version: 'ppc_version',
+  backupV1: 'ppc_backup_v1',
 }
 
-export function saveTasks(tasks) {
-  localStorage.setItem('ppc_tasks', JSON.stringify(tasks))
+export const DEFAULT_COLUMNS = [
+  { id: 'col-todo', name: 'K řešení', color: 'gray' },
+  { id: 'col-doing', name: 'Probíhá', color: 'blue' },
+]
+
+const LEGACY_STATUS_TO_COLUMN = {
+  'K řešení': 'col-todo',
+  'Probíhá': 'col-doing',
 }
 
 export function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2)
+}
+
+function readJSON(key) {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function writeJSON(key, value) {
+  localStorage.setItem(key, JSON.stringify(value))
+}
+
+// Doplní chybějící pole, aby zbytek aplikace mohl počítat s úplným tvarem úkolu.
+export function normalizeTask(task, columns) {
+  const firstColumnId = columns[0]?.id
+  const columnExists = columns.some(c => c.id === task.columnId)
+  return {
+    title: '',
+    description: '',
+    clientId: '',
+    priority: 'Střední',
+    dueDate: '',
+    recurrence: 'Jednorázový',
+    checklist: [],
+    archived: false,
+    completedAt: null,
+    ...task,
+    columnId: columnExists ? task.columnId : firstColumnId,
+  }
+}
+
+function migrateFromV1(clients, tasks) {
+  // Záloha původních dat, kdyby převod něco pokazil
+  if (!localStorage.getItem(KEYS.backupV1)) {
+    writeJSON(KEYS.backupV1, { clients, tasks, savedAt: new Date().toISOString() })
+  }
+
+  const columns = DEFAULT_COLUMNS
+  const migratedClients = clients.map((c, i) => ({
+    ...c,
+    color: c.color || LEGACY_ORDER[i % LEGACY_ORDER.length],
+  }))
+
+  const now = new Date().toISOString()
+  const migratedTasks = tasks.map(t => {
+    const { status, ...rest } = t
+    const isDone = status === 'Hotovo'
+    return normalizeTask({
+      ...rest,
+      columnId: rest.columnId || LEGACY_STATUS_TO_COLUMN[status] || 'col-todo',
+      // Úkoly ze sloupce „Hotovo“ se přesunou do archivu
+      archived: isDone,
+      completedAt: isDone ? (rest.dueDate ? `${rest.dueDate}T12:00:00.000Z` : now) : null,
+    }, columns)
+  })
+
+  return { clients: migratedClients, columns, tasks: migratedTasks }
+}
+
+// Načte všechna data, při prvním spuštění zapíše výchozí data a případně převede starou verzi.
+export function loadState() {
+  const version = Number(localStorage.getItem(KEYS.version) || 1)
+  let clients = readJSON(KEYS.clients) ?? SEED_CLIENTS
+  let tasks = readJSON(KEYS.tasks) ?? SEED_TASKS
+  let columns = readJSON(KEYS.columns)
+
+  if (version < 2 || !columns) {
+    ({ clients, columns, tasks } = migrateFromV1(clients, tasks))
+  } else {
+    clients = clients.map(c => ({ ...c, color: c.color || 'gray' }))
+    tasks = tasks.map(t => normalizeTask(t, columns))
+  }
+
+  saveState({ clients, columns, tasks })
+  return { clients, columns, tasks }
+}
+
+export function saveState({ clients, columns, tasks }) {
+  if (clients) writeJSON(KEYS.clients, clients)
+  if (columns) writeJSON(KEYS.columns, columns)
+  if (tasks) writeJSON(KEYS.tasks, tasks)
+  localStorage.setItem(KEYS.version, String(DATA_VERSION))
+}
+
+// ---------------------------------------------------------------------------
+// Záloha do souboru a obnova
+// ---------------------------------------------------------------------------
+export function exportBackup({ clients, columns, tasks }) {
+  const data = { app: 'freelance-manager', version: DATA_VERSION, exportedAt: new Date().toISOString(), clients, columns, tasks }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `freelance-manager-zaloha-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// Vrátí { clients, columns, tasks } nebo vyhodí chybu s českou hláškou.
+export function parseBackup(text) {
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new Error('Soubor není platný JSON.')
+  }
+  if (!Array.isArray(data?.clients) || !Array.isArray(data?.tasks)) {
+    throw new Error('Soubor neobsahuje klienty a úkoly z této aplikace.')
+  }
+  if (!Array.isArray(data.columns) || Number(data.version || 1) < 2) {
+    return migrateFromV1(data.clients, data.tasks)
+  }
+  const columns = data.columns.length ? data.columns : DEFAULT_COLUMNS
+  return {
+    clients: data.clients.map(c => ({ ...c, color: c.color || 'gray' })),
+    columns,
+    tasks: data.tasks.map(t => normalizeTask(t, columns)),
+  }
 }

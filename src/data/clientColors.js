@@ -1,33 +1,41 @@
-const PALETTE = [
-  // 0: Sportega → modrá
-  { dot: 'bg-blue-500',   badge: 'bg-blue-50 text-blue-700 border-blue-200',     solid: 'bg-blue-500 text-white' },
-  // 1: Flystork → světle zelená
-  { dot: 'bg-green-300',  badge: 'bg-green-50 text-green-600 border-green-200',   solid: 'bg-green-400 text-white' },
-  // 2: Bioprodukt JT → hnědá
-  { dot: 'bg-stone-500',  badge: 'bg-stone-50 text-stone-700 border-stone-200',   solid: 'bg-stone-500 text-white' },
-  // 3: Sardinerie → tmavě modrá
-  { dot: 'bg-blue-800',   badge: 'bg-blue-100 text-blue-900 border-blue-300',     solid: 'bg-blue-800 text-white' },
-  // 4: OneClub → červená
-  { dot: 'bg-red-500',    badge: 'bg-red-50 text-red-700 border-red-200',         solid: 'bg-red-500 text-white' },
-  // 5: PEF Mendelu → světle modrá
-  { dot: 'bg-sky-300',    badge: 'bg-sky-50 text-sky-600 border-sky-200',         solid: 'bg-sky-400 text-white' },
-  // 6: Celtic → tmavě zelená
-  { dot: 'bg-green-700',  badge: 'bg-green-100 text-green-900 border-green-300',  solid: 'bg-green-700 text-white' },
-  // 7: Přirozený běh → oranžová
-  { dot: 'bg-orange-400', badge: 'bg-orange-50 text-orange-700 border-orange-200',solid: 'bg-orange-400 text-white' },
-  // 8: Colortap → tmavě oranžová
-  { dot: 'bg-orange-600', badge: 'bg-orange-100 text-orange-800 border-orange-300',solid: 'bg-orange-600 text-white' },
-  // 9: Tiny House → šedá
-  { dot: 'bg-gray-400',   badge: 'bg-gray-50 text-gray-600 border-gray-200',      solid: 'bg-gray-500 text-white' },
-  // 10: Zboží z Bali → růžová
-  { dot: 'bg-pink-400',   badge: 'bg-pink-50 text-pink-700 border-pink-200',      solid: 'bg-pink-400 text-white' },
-  // 11: (rezerva)
-  { dot: 'bg-violet-400', badge: 'bg-violet-50 text-violet-700 border-violet-200',solid: 'bg-violet-400 text-white' },
+// Paleta barevných štítků pro klienty i sloupce.
+// Třídy musí být napsané celé (ne skládané), aby je Tailwind našel při buildu.
+export const COLORS = [
+  { key: 'blue',        label: 'Modrá',         dot: 'bg-blue-500',   solid: 'bg-blue-500 text-white' },
+  { key: 'navy',        label: 'Tmavě modrá',   dot: 'bg-blue-800',   solid: 'bg-blue-800 text-white' },
+  { key: 'sky',         label: 'Světle modrá',  dot: 'bg-sky-300',    solid: 'bg-sky-400 text-white' },
+  { key: 'teal',        label: 'Tyrkysová',     dot: 'bg-teal-500',   solid: 'bg-teal-500 text-white' },
+  { key: 'green-light', label: 'Světle zelená', dot: 'bg-green-300',  solid: 'bg-green-400 text-white' },
+  { key: 'green',       label: 'Tmavě zelená',  dot: 'bg-green-700',  solid: 'bg-green-700 text-white' },
+  { key: 'yellow',      label: 'Žlutá',         dot: 'bg-yellow-400', solid: 'bg-yellow-400 text-yellow-950' },
+  { key: 'orange',      label: 'Oranžová',      dot: 'bg-orange-400', solid: 'bg-orange-400 text-white' },
+  { key: 'orange-dark', label: 'Tmavě oranžová',dot: 'bg-orange-600', solid: 'bg-orange-600 text-white' },
+  { key: 'red',         label: 'Červená',       dot: 'bg-red-500',    solid: 'bg-red-500 text-white' },
+  { key: 'pink',        label: 'Růžová',        dot: 'bg-pink-400',   solid: 'bg-pink-400 text-white' },
+  { key: 'violet',      label: 'Fialová',       dot: 'bg-violet-400', solid: 'bg-violet-400 text-white' },
+  { key: 'brown',       label: 'Hnědá',         dot: 'bg-stone-500',  solid: 'bg-stone-500 text-white' },
+  { key: 'gray',        label: 'Šedá',          dot: 'bg-gray-400',   solid: 'bg-gray-500 text-white' },
 ]
 
-// Deterministická barva podle indexu klienta v poli
+const BY_KEY = Object.fromEntries(COLORS.map(c => [c.key, c]))
+
+// Pořadí barev ve staré verzi (barva podle pořadí klienta) – použito při převodu dat.
+export const LEGACY_ORDER = [
+  'blue', 'green-light', 'brown', 'navy', 'red', 'sky',
+  'green', 'orange', 'orange-dark', 'gray', 'pink', 'violet',
+]
+
+export function getColor(key) {
+  return BY_KEY[key] || BY_KEY.gray
+}
+
 export function getClientColor(clients, clientId) {
-  const index = clients.findIndex(c => c.id === clientId)
-  if (index === -1) return PALETTE[0]
-  return PALETTE[index % PALETTE.length]
+  const client = clients.find(c => c.id === clientId)
+  return getColor(client?.color)
+}
+
+// První barva, kterou ještě nikdo nepoužívá (pro nového klienta)
+export function nextFreeColor(items) {
+  const used = new Set(items.map(i => i.color))
+  return (COLORS.find(c => !used.has(c.key)) || COLORS[items.length % COLORS.length]).key
 }
