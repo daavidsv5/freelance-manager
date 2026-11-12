@@ -47,23 +47,23 @@ export default function Dashboard({ tasks, archived }) {
   const weekLabel = `${parseDate(weekStart).getDate()}. až ${parseDate(weekEnd).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' })}`
 
   return (
-    <div className="px-8 py-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0">
-      <div className="flex items-center gap-4">
+    <div className="md:px-8 py-2.5 md:py-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0">
+      <div className="flex items-stretch md:items-center gap-2 md:gap-4 overflow-x-auto no-scrollbar px-4 md:px-0">
         {stats.map(s => {
           const Icon = s.icon
           return (
-            <div key={s.label} className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border flex-1 ${TONES[s.tone]}`}>
+            <div key={s.label} className={`flex items-center gap-2.5 md:gap-3 px-3 md:px-4 py-2 md:py-2.5 rounded-xl border flex-shrink-0 md:flex-shrink md:flex-1 ${TONES[s.tone]}`}>
               <Icon className="w-4 h-4 flex-shrink-0" />
               <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 leading-none mb-0.5 whitespace-nowrap">{s.label}</p>
-                <p className="text-xl font-bold leading-none">{s.value}</p>
+                <p className="text-lg md:text-xl font-bold leading-none">{s.value}</p>
               </div>
             </div>
           )
         })}
 
         <div
-          className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50"
+          className="flex-shrink-0 min-w-[170px] md:min-w-0 md:flex-shrink md:flex-1 px-3 md:px-4 py-2 md:py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50"
           title="Splněné úkoly od pondělí oproti všem úkolům s termínem do neděle"
         >
           <div className="flex items-center justify-between mb-1.5 gap-2">
@@ -77,6 +77,7 @@ export default function Dashboard({ tasks, archived }) {
             />
           </div>
         </div>
+        <div className="w-px flex-shrink-0 md:hidden" />
       </div>
     </div>
   )

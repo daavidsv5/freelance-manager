@@ -1,4 +1,4 @@
-import { X, Plus, Check, Archive } from 'lucide-react'
+import { X, Plus, Check, Archive, Trash2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { generateId } from '../data/storage'
 
@@ -16,7 +16,7 @@ const EMPTY_TASK = {
 const field = 'w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 dark:focus:ring-indigo-900 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500'
 const label = 'block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1'
 
-export default function TaskModal({ task, defaults, clients, columns, onSave, onClose }) {
+export default function TaskModal({ task, defaults, clients, columns, onSave, onDelete, onClose }) {
   // Modal se při každém otevření připojí znovu, stačí tedy počáteční stav
   const [form, setForm] = useState(() =>
     task ? { ...EMPTY_TASK, ...task } : { ...EMPTY_TASK, columnId: columns[0]?.id || '', ...defaults }
@@ -69,12 +69,12 @@ export default function TaskModal({ task, defaults, clients, columns, onSave, on
   const doneCount = form.checklist.filter(i => i.done).length
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-stretch md:items-center justify-center z-50 md:p-4" onClick={onClose}>
       <div
-        className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[92vh] flex flex-col"
+        className="bg-white dark:bg-slate-800 md:rounded-2xl shadow-xl w-full md:max-w-lg h-full md:h-auto md:max-h-[92vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+        <div className="flex items-center justify-between px-4 md:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-4 md:py-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
           <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
             {task ? 'Upravit úkol' : 'Nový úkol'}
             {task?.archived && (
@@ -83,16 +83,16 @@ export default function TaskModal({ task, defaults, clients, columns, onSave, on
               </span>
             )}
           </h2>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="p-2 md:p-1 -mr-1 md:mr-0 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+            <X className="w-5 h-5 md:w-4 md:h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 flex flex-col gap-4 overflow-y-auto">
+        <form onSubmit={handleSubmit} className="px-4 md:px-6 pt-5 flex flex-col gap-4 overflow-y-auto flex-1 md:flex-initial">
           <div>
             <label className={label}>Název úkolu *</label>
             <input
-              autoFocus
+              autoFocus={!task && window.matchMedia('(min-width: 768px)').matches}
               required
               value={form.title}
               onChange={e => set('title', e.target.value)}
@@ -141,7 +141,7 @@ export default function TaskModal({ task, defaults, clients, columns, onSave, on
                     <button
                       type="button"
                       onClick={() => removeItem(item.id)}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-red-500"
+                      className="md:opacity-0 md:group-hover:opacity-100 p-1.5 md:p-0.5 text-slate-400 hover:text-red-500"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -217,7 +217,17 @@ export default function TaskModal({ task, defaults, clients, columns, onSave, on
             )}
           </div>
 
-          <div className="flex gap-3 pt-1">
+          <div className="sticky bottom-0 -mx-4 md:-mx-6 px-4 md:px-6 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] mt-auto bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 md:border-0 flex gap-3">
+            {onDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                title="Smazat úkol"
+                className="p-2.5 border border-slate-300 dark:border-slate-600 text-slate-400 hover:text-red-500 hover:border-red-300 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}

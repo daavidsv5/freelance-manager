@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, ArrowUpDown, AlertTriangle, Calendar, X, Sun, Moon, Search, Undo2 } from 'lucide-react'
+import { Plus, ArrowUpDown, AlertTriangle, Calendar, X, Sun, Moon, Search, Undo2, Menu, SlidersHorizontal } from 'lucide-react'
 import Sidebar from './components/Sidebar'
 import KanbanBoard from './components/KanbanBoard'
 import TaskModal from './components/TaskModal'
@@ -50,6 +50,8 @@ export default function App() {
   const [modal, setModal] = useState(null) // { task } nebo { defaults }
   const [confirm, setConfirm] = useState(null)
   const [toast, setToast] = useState(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ppc_dark') === 'true')
 
   // Ukládání do localStorage při každé změně
@@ -285,15 +287,81 @@ export default function App() {
   const dateFilterActive = dateFrom || dateTo
   const clientName = selectedClient ? clientNames[selectedClient] : 'Všichni klienti'
 
+  const searchBox = (
+    <div className={`flex items-center gap-2 border rounded-lg px-3 py-2 min-w-0 ${query ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 dark:border-indigo-700' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'}`}>
+      <Search className={`w-3.5 h-3.5 flex-shrink-0 ${query ? 'text-indigo-500' : 'text-slate-400'}`} />
+      <input
+        type="search"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        onKeyDown={e => e.key === 'Escape' && setSearch('')}
+        placeholder="Hledat úkol…"
+        className="text-sm text-slate-600 dark:text-slate-200 outline-none bg-transparent flex-1 min-w-0 md:w-40 md:flex-none placeholder-slate-400 [&::-webkit-search-cancel-button]:hidden"
+      />
+      {query && (
+        <button onClick={() => setSearch('')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  )
+
+  const dateFilter = (
+    <div
+      title={view === 'board' ? 'Filtr podle termínu' : 'Filtr podle data splnění'}
+      className={`flex items-center gap-2 border rounded-lg px-3 py-2 ${dateFilterActive ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 dark:border-indigo-700' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'}`}
+    >
+      <Calendar className={`w-3.5 h-3.5 flex-shrink-0 ${dateFilterActive ? 'text-indigo-500' : 'text-slate-400'}`} />
+      <input
+        type="date"
+        value={dateFrom}
+        onChange={e => setDateFrom(e.target.value)}
+        className="text-sm text-slate-600 dark:text-slate-300 outline-none bg-transparent flex-1 min-w-0 md:w-32 md:flex-none dark:[color-scheme:dark]"
+      />
+      <span className="text-slate-300 dark:text-slate-500 text-sm">–</span>
+      <input
+        type="date"
+        value={dateTo}
+        onChange={e => setDateTo(e.target.value)}
+        className="text-sm text-slate-600 dark:text-slate-300 outline-none bg-transparent flex-1 min-w-0 md:w-32 md:flex-none dark:[color-scheme:dark]"
+      />
+      {dateFilterActive && (
+        <button onClick={() => { setDateFrom(''); setDateTo('') }} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 ml-1">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  )
+
+  const sortSelect = view === 'board' && (
+    <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700">
+      <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 dark:text-slate-300 flex-shrink-0" />
+      <select
+        value={sortBy}
+        onChange={e => setSortBy(e.target.value)}
+        className="text-sm text-slate-600 dark:text-slate-100 outline-none bg-transparent flex-1 md:flex-none dark:[color-scheme:dark]"
+      >
+        {SORT_OPTIONS.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  )
+
+  const filtersActive = dateFilterActive || sortBy !== 'default'
+  const closeSidebar = () => setSidebarOpen(false)
+
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-900">
+    <div className="flex h-dvh overflow-hidden bg-slate-50 dark:bg-slate-900">
       <Sidebar
+        open={sidebarOpen}
+        onClose={closeSidebar}
         clients={clients}
         tasks={tasks}
         view={view}
-        onChangeView={setView}
+        onChangeView={v => { setView(v); closeSidebar() }}
         selectedClient={selectedClient}
-        onSelectClient={setSelectedClient}
+        onSelectClient={id => { setSelectedClient(id); closeSidebar() }}
         onAddClient={handleAddClient}
         onUpdateClient={handleUpdateClient}
         onDeleteClient={handleDeleteClient}
@@ -303,90 +371,45 @@ export default function App() {
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Hlavička */}
-        <div className="flex flex-wrap items-center justify-between gap-4 px-8 py-5 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 truncate">
-              {clientName}
-              {view === 'archive' && <span className="text-slate-400 dark:text-slate-500 font-normal"> · Archiv</span>}
-            </h1>
-            <div className="flex items-center gap-3 mt-0.5">
-              <span className="text-sm text-slate-500 dark:text-slate-400">
-                {view === 'board'
-                  ? `${boardTasks.length} ${plural(boardTasks.length, 'aktivní úkol', 'aktivní úkoly', 'aktivních úkolů')}`
-                  : `${archiveList.length} ${plural(archiveList.length, 'splněný úkol', 'splněné úkoly', 'splněných úkolů')}`}
-              </span>
-              {view === 'board' && overdueCount > 0 && (
-                <span className="flex items-center gap-1 text-xs text-red-600 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 px-2 py-0.5 rounded-full font-medium">
-                  <AlertTriangle className="w-3 h-3" />
-                  {overdueCount} po termínu
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Hledání */}
-            <div className={`flex items-center gap-2 border rounded-lg px-3 py-2 ${query ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 dark:border-indigo-700' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'}`}>
-              <Search className={`w-3.5 h-3.5 flex-shrink-0 ${query ? 'text-indigo-500' : 'text-slate-400'}`} />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                onKeyDown={e => e.key === 'Escape' && setSearch('')}
-                placeholder="Hledat úkol…"
-                className="text-sm text-slate-600 dark:text-slate-200 outline-none bg-transparent w-40 placeholder-slate-400"
-              />
-              {query && (
-                <button onClick={() => setSearch('')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Filtr data */}
-            <div
-              title={view === 'board' ? 'Filtr podle termínu' : 'Filtr podle data splnění'}
-              className={`flex items-center gap-2 border rounded-lg px-3 py-2 ${dateFilterActive ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 dark:border-indigo-700' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'}`}
+        <div className="px-4 md:px-8 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 md:py-5 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+          <div className="flex items-center gap-3 md:gap-4">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden p-2 -ml-2 rounded-lg text-slate-600 dark:text-slate-300 active:bg-slate-100 dark:active:bg-slate-700"
+              title="Menu"
             >
-              <Calendar className={`w-3.5 h-3.5 flex-shrink-0 ${dateFilterActive ? 'text-indigo-500' : 'text-slate-400'}`} />
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
-                className="text-sm text-slate-600 dark:text-slate-300 outline-none bg-transparent w-32 dark:[color-scheme:dark]"
-              />
-              <span className="text-slate-300 dark:text-slate-500 text-sm">–</span>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
-                className="text-sm text-slate-600 dark:text-slate-300 outline-none bg-transparent w-32 dark:[color-scheme:dark]"
-              />
-              {dateFilterActive && (
-                <button onClick={() => { setDateFrom(''); setDateTo('') }} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 ml-1">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <Menu className="w-5 h-5" />
+            </button>
+
+            <div className="min-w-0 flex-1">
+              <h1 className="text-lg md:text-xl font-bold text-slate-900 dark:text-slate-100 truncate">
+                {clientName}
+                {view === 'archive' && <span className="text-slate-400 dark:text-slate-500 font-normal"> · Archiv</span>}
+              </h1>
+              <div className="flex items-center gap-2 md:gap-3 mt-0.5 flex-wrap">
+                <span className="text-xs md:text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                  {view === 'board'
+                    ? `${boardTasks.length} ${plural(boardTasks.length, 'aktivní úkol', 'aktivní úkoly', 'aktivních úkolů')}`
+                    : `${archiveList.length} ${plural(archiveList.length, 'splněný úkol', 'splněné úkoly', 'splněných úkolů')}`}
+                </span>
+                {view === 'board' && overdueCount > 0 && (
+                  <span className="flex items-center gap-1 text-xs text-red-600 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                    <AlertTriangle className="w-3 h-3" />
+                    {overdueCount} po termínu
+                  </span>
+                )}
+              </div>
             </div>
 
-            {/* Řazení */}
-            {view === 'board' && (
-              <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700">
-                <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 dark:text-slate-300" />
-                <select
-                  value={sortBy}
-                  onChange={e => setSortBy(e.target.value)}
-                  className="text-sm text-slate-600 dark:text-slate-100 outline-none bg-transparent dark:[color-scheme:dark]"
-                >
-                  {SORT_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div className="hidden md:flex items-center gap-3">
+              {searchBox}
+              {dateFilter}
+              {sortSelect}
+            </div>
 
             <button
               onClick={() => setDarkMode(d => !d)}
-              className="p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
+              className="p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors flex-shrink-0"
               title={darkMode ? 'Přepnout na světlý režim' : 'Přepnout na tmavý režim'}
             >
               {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -394,18 +417,42 @@ export default function App() {
 
             <button
               onClick={() => setModal({ defaults: { clientId: selectedClient || '' } })}
-              className="flex items-center gap-2 bg-green-600 text-white text-sm px-4 py-2 rounded-xl hover:bg-green-700 transition-colors font-medium"
+              className="flex items-center gap-2 bg-green-600 text-white text-sm p-2 md:px-4 md:py-2 rounded-xl hover:bg-green-700 transition-colors font-medium flex-shrink-0"
+              title="Nový úkol"
             >
-              <Plus className="w-4 h-4" />
-              Nový úkol
+              <Plus className="w-5 h-5 md:w-4 md:h-4" />
+              <span className="hidden md:inline">Nový úkol</span>
             </button>
           </div>
+
+          {/* Mobil: hledání a filtry pod nadpisem */}
+          <div className="md:hidden flex items-center gap-2 mt-3">
+            <div className="flex-1 min-w-0">{searchBox}</div>
+            <button
+              onClick={() => setFiltersOpen(o => !o)}
+              className={`relative p-2.5 rounded-lg border flex-shrink-0 ${
+                filtersOpen || filtersActive
+                  ? 'border-indigo-300 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:border-indigo-700 dark:text-indigo-300'
+                  : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300'
+              }`}
+              title="Filtry a řazení"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              {filtersActive && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white dark:border-slate-800" />}
+            </button>
+          </div>
+          {filtersOpen && (
+            <div className="md:hidden flex flex-col gap-2 mt-2">
+              {dateFilter}
+              {sortSelect}
+            </div>
+          )}
         </div>
 
         {view === 'board' ? (
           <>
             <Dashboard tasks={activeTasks} archived={archivedTasks} />
-            <div className="flex-1 overflow-auto px-8 py-6">
+            <div className="flex-1 min-h-0">
               <KanbanBoard
                 columns={columns}
                 tasks={boardTasks}
@@ -423,7 +470,7 @@ export default function App() {
             </div>
           </>
         ) : (
-          <div className="flex-1 overflow-auto px-8 py-6">
+          <div className="flex-1 overflow-auto px-4 md:px-8 py-4 md:py-6">
             <ArchiveView
               tasks={archiveList}
               clients={clients}
@@ -443,6 +490,7 @@ export default function App() {
           clients={clients}
           columns={columns}
           onSave={handleSaveTask}
+          onDelete={modal.task ? () => { handleDeleteTask(modal.task); setModal(null) } : null}
           onClose={closeModal}
         />
       )}
@@ -456,7 +504,7 @@ export default function App() {
       )}
 
       {toast && (
-        <div key={toast.id} className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 bg-slate-900 dark:bg-slate-700 text-white text-sm pl-4 pr-2 py-2 rounded-xl shadow-lg max-w-[90vw]">
+        <div key={toast.id} className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 bg-slate-900 dark:bg-slate-700 text-white text-sm pl-4 pr-2 py-2 rounded-xl shadow-lg max-w-[90vw]">
           <span className="truncate">{toast.message}</span>
           {toast.undo && (
             <button

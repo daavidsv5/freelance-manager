@@ -33,6 +33,8 @@ npm run lint     # ESLint
 
 **Drag & drop:** Native HTML5 DnD in `KanbanBoard.jsx`. Dropping onto a card inserts before/after it (by mouse Y), dropping on empty column space appends. Calls `onMoveTask(taskId, columnId, beforeId)`.
 
+**Mobile (< `md`, 768 px):** Sidebar is an off-canvas drawer (`open`/`onClose` props, ☰ in header). Header shows search + filter toggle (date filter and sort inside). Board columns are 85vw wide with horizontal scroll-snap and a column chip bar on top (`KanbanBoard.jsx`). HTML5 drag & drop doesn't work on touch, so cards show a "Přesunout do sloupce" button (`md:hidden`); hover-only actions are hidden on mobile (delete is in the task modal). Task modal is full-screen with a sticky footer. `index.css` forces 16 px inputs on mobile to stop iOS zoom. Use `h-dvh` for full height and `env(safe-area-inset-*)` for notch padding.
+
 **Dark mode:** Toggled by adding/removing the `dark` class on `document.documentElement`. Tailwind `dark:` variants handle styling. Preference persisted in `localStorage` under `ppc_dark`.
 
 **Key files:**

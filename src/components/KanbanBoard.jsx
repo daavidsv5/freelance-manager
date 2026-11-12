@@ -71,7 +71,7 @@ function InlineInput({ placeholder, initial = '', onSubmit, onCancel, keepOpen =
 }
 
 function Column({
-  column, tasks, clients, index, columnCount, dropTarget, setDropTarget, draggingId, setDraggingId,
+  column, columns, colRef, tasks, clients, index, columnCount, dropTarget, setDropTarget, draggingId, setDraggingId,
   onMoveTask, onEditTask, onDeleteTask, onCompleteTask, onQuickAdd,
   onUpdateColumn, onMoveColumn, onDeleteColumn,
 }) {
@@ -109,7 +109,8 @@ function Column({
 
   return (
     <div
-      className="flex flex-col min-h-0 w-[300px] flex-shrink-0"
+      ref={colRef}
+      className="flex flex-col min-h-0 w-[85vw] max-w-[360px] md:w-[300px] md:max-w-none flex-shrink-0 snap-start"
       onDragOver={handleColumnDragOver}
       onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDropTarget(null) }}
       onDrop={handleDrop}
@@ -142,7 +143,7 @@ function Column({
             </span>
             <button
               onClick={() => setMenuOpen(o => !o)}
-              className="ml-auto p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
+              className="ml-auto p-1.5 md:p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
               title="Možnosti sloupce"
             >
               <MoreHorizontal className="w-4 h-4" />
@@ -185,6 +186,8 @@ function Column({
               <TaskCard
                 task={task}
                 clients={clients}
+                columns={columns}
+                onMove={(taskId, columnId) => onMoveTask(taskId, columnId, null)}
                 onEdit={onEditTask}
                 onDelete={onDeleteTask}
                 onComplete={onCompleteTask}
@@ -214,7 +217,7 @@ function Column({
         ) : (
           <button
             onClick={() => setQuickAdd(true)}
-            className="flex items-center gap-1.5 text-sm text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg px-2 py-1.5 transition-colors"
+            className="flex items-center gap-1.5 text-sm text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg px-2 py-2.5 md:py-1.5 transition-colors"
           >
             <Plus className="w-4 h-4" /> Přidat úkol
           </button>
@@ -228,47 +231,101 @@ export default function KanbanBoard({ columns, tasks, ...handlers }) {
   const [dropTarget, setDropTarget] = useState(null)
   const [draggingId, setDraggingId] = useState(null)
   const [addingColumn, setAddingColumn] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const scrollRef = useRef(null)
+  const colRefs = useRef([])
+
+  // Mobil: který sloupec je právě vidět (pro zvýraznění v liště nahoře)
+  function handleScroll() {
+    const container = scrollRef.current
+    if (!container) return
+    const left = container.getBoundingClientRect().left
+    let best = 0
+    let bestDist = Infinity
+    colRefs.current.forEach((el, i) => {
+      if (!el) return
+      const dist = Math.abs(el.getBoundingClientRect().left - left)
+      if (dist < bestDist) { best = i; bestDist = dist }
+    })
+    if (best !== activeIndex) setActiveIndex(best)
+  }
+
+  function scrollToColumn(i) {
+    colRefs.current[i]?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+  }
 
   return (
-    <div className="flex gap-5 h-full items-stretch">
-      {columns.map((col, i) => (
-        <Column
-          key={col.id}
-          column={col}
-          index={i}
-          columnCount={columns.length}
-          tasks={tasks.filter(t => t.columnId === col.id)}
-          clients={handlers.clients}
-          dropTarget={dropTarget}
-          setDropTarget={setDropTarget}
-          draggingId={draggingId}
-          setDraggingId={setDraggingId}
-          {...handlers}
-        />
-      ))}
-
-      <div className="w-[260px] flex-shrink-0">
-        {addingColumn ? (
-          <div className="flex items-center gap-1">
-            <InlineInput
-              className="flex-1"
-              keepOpen
-              placeholder="Název sloupce a Enter"
-              onSubmit={name => handlers.onAddColumn(name)}
-              onCancel={() => setAddingColumn(false)}
-            />
-            <button onClick={() => setAddingColumn(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-              <X className="w-4 h-4" />
+    <div className="flex flex-col h-full min-h-0">
+      {/* Mobil: lišta sloupců */}
+      <div className="md:hidden flex gap-2 overflow-x-auto no-scrollbar px-4 pt-3 pb-1 flex-shrink-0">
+        {columns.map((col, i) => {
+          const count = tasks.filter(t => t.columnId === col.id).length
+          return (
+            <button
+              key={col.id}
+              onClick={() => scrollToColumn(i)}
+              className={`flex items-center gap-1.5 whitespace-nowrap text-sm px-3 py-1.5 rounded-full border transition-colors ${
+                i === activeIndex
+                  ? 'bg-indigo-600 border-indigo-600 text-white'
+                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${getColor(col.color).dot}`} />
+              {col.name}
+              <span className={i === activeIndex ? 'text-indigo-200' : 'text-slate-400'}>{count}</span>
             </button>
+          )
+        })}
+      </div>
+
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="flex-1 min-h-0 overflow-auto px-4 md:px-8 py-3 md:py-6 snap-x snap-mandatory scroll-pl-4 md:snap-none"
+      >
+        <div className="flex gap-3 md:gap-5 h-full items-stretch">
+          {columns.map((col, i) => (
+            <Column
+              key={col.id}
+              column={col}
+              columns={columns}
+              colRef={el => { colRefs.current[i] = el }}
+              index={i}
+              columnCount={columns.length}
+              tasks={tasks.filter(t => t.columnId === col.id)}
+              clients={handlers.clients}
+              dropTarget={dropTarget}
+              setDropTarget={setDropTarget}
+              draggingId={draggingId}
+              setDraggingId={setDraggingId}
+              {...handlers}
+            />
+          ))}
+
+          <div className="w-[85vw] max-w-[360px] md:w-[260px] md:max-w-none flex-shrink-0 snap-start pr-4 md:pr-0">
+            {addingColumn ? (
+              <div className="flex items-center gap-1">
+                <InlineInput
+                  className="flex-1"
+                  keepOpen
+                  placeholder="Název sloupce a Enter"
+                  onSubmit={name => handlers.onAddColumn(name)}
+                  onCancel={() => setAddingColumn(false)}
+                />
+                <button onClick={() => setAddingColumn(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setAddingColumn(true)}
+                className="w-full flex items-center justify-center gap-2 text-sm text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-700 rounded-xl py-2.5 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Přidat sloupec
+              </button>
+            )}
           </div>
-        ) : (
-          <button
-            onClick={() => setAddingColumn(true)}
-            className="w-full flex items-center justify-center gap-2 text-sm text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-700 rounded-xl py-2.5 transition-colors"
-          >
-            <Plus className="w-4 h-4" /> Přidat sloupec
-          </button>
-        )}
+        </div>
       </div>
     </div>
   )

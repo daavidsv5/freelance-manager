@@ -1,4 +1,4 @@
-import { Users, Plus, Briefcase, Pencil, Trash2, LayoutGrid, Archive, Download, Upload } from 'lucide-react'
+import { Users, Plus, Briefcase, Pencil, Trash2, LayoutGrid, Archive, Download, Upload, X } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { getColor, nextFreeColor } from '../data/clientColors'
 import ColorPicker from './ColorPicker'
@@ -45,7 +45,7 @@ function NavButton({ active, onClick, icon, children, badge }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors ${
+      className={`w-full flex items-center gap-2 px-3 py-2.5 md:py-2 rounded-lg text-sm mb-0.5 transition-colors ${
         active
           ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-medium'
           : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
@@ -62,7 +62,7 @@ function NavButton({ active, onClick, icon, children, badge }) {
 
 export default function Sidebar({
   clients, tasks, view, onChangeView, selectedClient, onSelectClient,
-  onAddClient, onUpdateClient, onDeleteClient, onExport, onImport,
+  onAddClient, onUpdateClient, onDeleteClient, onExport, onImport, open, onClose,
 }) {
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -78,11 +78,22 @@ export default function Sidebar({
   }
 
   return (
-    <aside className="w-60 h-screen bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col flex-shrink-0">
-      <div className="px-4 py-5 border-b border-slate-200 dark:border-slate-700">
+    <>
+    {/* Mobil: ztmavené pozadí pod vysunutým panelem */}
+    <div
+      onClick={onClose}
+      className={`fixed inset-0 bg-black/40 z-40 md:hidden transition-opacity ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+    />
+    <aside className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] md:static md:z-auto md:w-60 md:max-w-none h-dvh bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col flex-shrink-0 transition-transform duration-200 md:translate-x-0 ${
+      open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+    }`}>
+      <div className="px-4 py-4 md:py-5 border-b border-slate-200 dark:border-slate-700">
         <div className="flex items-center gap-2">
           <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Freelance Manager</span>
+          <span className="font-semibold text-slate-800 dark:text-slate-100 text-sm flex-1">Freelance Manager</span>
+          <button onClick={onClose} className="md:hidden p-1.5 -mr-1.5 rounded-lg text-slate-400 active:bg-slate-100 dark:active:bg-slate-700" title="Zavřít">
+            <X className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
@@ -113,7 +124,7 @@ export default function Sidebar({
             ) : (
               <div
                 onClick={() => onSelectClient(client.id)}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-2 px-3 py-2.5 md:py-2 rounded-lg text-sm transition-colors cursor-pointer ${
                   selectedClient === client.id
                     ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-medium'
                     : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
@@ -121,19 +132,19 @@ export default function Sidebar({
               >
                 <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${getColor(client.color).dot}`} />
                 <span className="truncate flex-1">{client.name}</span>
-                <span className="text-[11px] text-slate-400 group-hover:hidden">{activeCount(client.id) || ''}</span>
-                <span className="hidden group-hover:flex items-center gap-0.5 flex-shrink-0">
+                <span className="hidden md:inline text-[11px] text-slate-400 md:group-hover:hidden">{activeCount(client.id) || ''}</span>
+                <span className="flex md:hidden md:group-hover:flex items-center gap-0.5 flex-shrink-0">
                   <button
                     title="Upravit klienta"
                     onClick={e => { e.stopPropagation(); setEditingId(client.id); setAdding(false) }}
-                    className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    className="p-1.5 md:p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                   >
                     <Pencil className="w-3 h-3" />
                   </button>
                   <button
                     title="Smazat klienta"
                     onClick={e => { e.stopPropagation(); onDeleteClient(client) }}
-                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/40 text-slate-400 hover:text-red-500"
+                    className="p-1.5 md:p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/40 text-slate-400 hover:text-red-500"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
@@ -161,7 +172,7 @@ export default function Sidebar({
         )}
       </nav>
 
-      <div className="px-3 py-3 border-t border-slate-200 dark:border-slate-700">
+      <div className="px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-slate-200 dark:border-slate-700">
         <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-2 mb-1.5">Záloha dat</p>
         <div className="flex gap-1">
           <button
@@ -182,5 +193,6 @@ export default function Sidebar({
         </div>
       </div>
     </aside>
+    </>
   )
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Calendar, Pencil, Trash2, AlertCircle, Repeat, Check, ListChecks, AlignLeft } from 'lucide-react'
-import { getClientColor } from '../data/clientColors'
+import { Calendar, Pencil, Trash2, AlertCircle, Repeat, Check, ListChecks, AlignLeft, ArrowRightLeft } from 'lucide-react'
+import { getClientColor, getColor } from '../data/clientColors'
 import { isOverdue, formatShort, todayISO } from '../data/dates'
 
 const PRIORITY_STYLES = {
@@ -35,9 +35,20 @@ export function CompleteCheckbox({ checked, priority, onToggle, title }) {
   )
 }
 
-export default function TaskCard({ task, clients, onEdit, onDelete, onComplete }) {
+export default function TaskCard({ task, clients, columns = [], onEdit, onDelete, onComplete, onMove }) {
   const [checked, setChecked] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const moveRef = useRef(null)
   const timer = useRef(null)
+
+  useEffect(() => {
+    if (!moveOpen) return
+    function handle(e) {
+      if (moveRef.current && !moveRef.current.contains(e.target)) setMoveOpen(false)
+    }
+    document.addEventListener('pointerdown', handle)
+    return () => document.removeEventListener('pointerdown', handle)
+  }, [moveOpen])
   // Časovač má volat vždy aktuální verzi funkce (s aktuálními daty z App)
   const onCompleteRef = useRef(onComplete)
   useEffect(() => { onCompleteRef.current = onComplete })
@@ -89,7 +100,39 @@ export default function TaskCard({ task, clients, onEdit, onDelete, onComplete }
         }`}>
           {task.title}
         </h3>
-        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 -mt-0.5 -mr-1">
+        {/* Mobil: přesun do jiného sloupce (přetahování na dotykovém displeji nefunguje) */}
+        {columns.length > 1 && (
+          <div ref={moveRef} className="relative md:hidden flex-shrink-0 -mt-1 -mr-1.5">
+            <button
+              title="Přesunout do sloupce"
+              onClick={e => { e.stopPropagation(); setMoveOpen(o => !o) }}
+              className="p-1.5 rounded-lg text-slate-400 active:bg-slate-100 dark:active:bg-slate-700"
+            >
+              <ArrowRightLeft className="w-4 h-4" />
+            </button>
+            {moveOpen && (
+              <div
+                onClick={e => e.stopPropagation()}
+                className="absolute right-0 top-8 z-30 w-52 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-1.5"
+              >
+                <p className="text-[11px] font-medium text-slate-400 px-3 pt-1 pb-1.5">Přesunout do</p>
+                {columns.map(col => (
+                  <button
+                    key={col.id}
+                    disabled={col.id === task.columnId}
+                    onClick={() => { setMoveOpen(false); onMove(task.id, col.id) }}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left rounded-lg text-slate-700 dark:text-slate-200 active:bg-slate-100 dark:active:bg-slate-700 disabled:opacity-40"
+                  >
+                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${getColor(col.color).dot}`} />
+                    <span className="truncate flex-1">{col.name}</span>
+                    {col.id === task.columnId && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="hidden md:flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 -mt-0.5 -mr-1">
           <button
             title="Upravit"
             onClick={e => { e.stopPropagation(); onEdit(task) }}

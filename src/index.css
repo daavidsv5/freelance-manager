@@ -12,3 +12,26 @@ body {
   background-color: #f8fafc;
   color: #1e293b;
 }
+
+/* Vodorovné lišty bez viditelného posuvníku (mobil) */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* iPhone přibližuje stránku při psaní do polí s písmem menším než 16 px */
+@media (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Bez modrého zvýraznění při ťuknutí na mobilu */
+button,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
+}

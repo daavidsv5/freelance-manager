@@ -34,8 +34,8 @@ export default function ArchiveView({ tasks, clients, onRestore, onDelete, onOpe
 
   return (
     <div className="max-w-3xl">
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400">
           Odškrtnutím vrátíte úkol zpět na nástěnku. Kliknutím na úkol ho otevřete.
         </p>
         <button
@@ -59,21 +59,21 @@ export default function ArchiveView({ tasks, clients, onRestore, onDelete, onOpe
                 <li
                   key={task.id}
                   onClick={() => onOpen(task)}
-                  className="group flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40"
+                  className="group flex items-center gap-3 px-3 md:px-4 py-3 md:py-2.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40"
                 >
                   <CompleteCheckbox checked priority={task.priority} onToggle={() => onRestore(task.id)} title="Vrátit na nástěnku" />
                   <span className="flex-1 min-w-0 text-sm line-through text-slate-400 dark:text-slate-500 truncate">{task.title}</span>
                   {client && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium truncate max-w-[140px] opacity-80 ${getClientColor(clients, task.clientId).solid}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium truncate max-w-[100px] md:max-w-[140px] opacity-80 ${getClientColor(clients, task.clientId).solid}`}>
                       {client.name}
                     </span>
                   )}
                   {task.dueDate && (
-                    <span className="flex items-center gap-1 text-xs text-slate-400 whitespace-nowrap" title="Původní termín">
+                    <span className="hidden sm:flex items-center gap-1 text-xs text-slate-400 whitespace-nowrap" title="Původní termín">
                       <Calendar className="w-3 h-3" /> {formatShort(task.dueDate)}
                     </span>
                   )}
-                  <span className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="hidden md:flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       title="Vrátit na nástěnku"
                       onClick={e => { e.stopPropagation(); onRestore(task.id) }}
