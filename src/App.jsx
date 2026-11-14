@@ -6,6 +6,7 @@ import TaskModal from './components/TaskModal'
 import Dashboard from './components/Dashboard'
 import ArchiveView from './components/ArchiveView'
 import ConfirmDialog from './components/ConfirmDialog'
+import TodoView from './components/TodoView'
 import { loadState, saveState, generateId, exportBackup, parseBackup } from './data/storage'
 import { nextFreeColor } from './data/clientColors'
 import { advanceDueDate, isOverdue, toISODate } from './data/dates'
@@ -40,9 +41,12 @@ export default function App() {
   const [clients, setClients] = useState(initial.clients)
   const [columns, setColumns] = useState(initial.columns)
   const [tasks, setTasks] = useState(initial.tasks)
+  const [todo, setTodo] = useState(initial.todo)
 
-  const [view, setView] = useState('board') // 'board' | 'archive'
+  const [view, setView] = useState('board') // 'board' | 'archive' | 'todo'
   const [selectedClient, setSelectedClient] = useState(null)
+  const [selectedList, setSelectedList] = useState(null) // id seznamu v To do listu, null = všechny
+  const [focusNewList, setFocusNewList] = useState(false)
   const [sortBy, setSortBy] = useState('default')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -56,8 +60,8 @@ export default function App() {
 
   // Ukládání do localStorage při každé změně
   useEffect(() => {
-    saveState({ clients, columns, tasks })
-  }, [clients, columns, tasks])
+    saveState({ clients, columns, tasks, todo })
+  }, [clients, columns, tasks, todo])
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
@@ -73,6 +77,7 @@ export default function App() {
   const showToast = useCallback((message, undo) => setToast({ id: generateId(), message, undo }), [])
   const closeModal = useCallback(() => setModal(null), [])
   const closeConfirm = useCallback(() => setConfirm(null), [])
+  const clearFocusNewList = useCallback(() => setFocusNewList(false), [])
 
   // ---------------------------------------------------------------- Klienti
   function handleAddClient(name, color) {
@@ -230,9 +235,117 @@ export default function App() {
     })
   }
 
+  // ---------------------------------------------------------------- To do list
+  const updateList = (id, fn) => setTodo(prev => prev.map(l => (l.id === id ? fn(l) : l)))
+
+  function handleAddList(name, color) {
+    const id = generateId()
+    setTodo(prev => [...prev, { id, name, color: color || nextFreeColor(prev), doneOpen: true, items: [] }])
+    return id
+  }
+
+  function handleUpdateList(id, patch) {
+    updateList(id, l => ({ ...l, ...patch }))
+  }
+
+  function handleDeleteList(list) {
+    const count = list.items.length
+    setConfirm({
+      title: `Smazat seznam „${list.name}“?`,
+      message: count
+        ? `Seznam obsahuje ${count} ${plural(count, 'bod', 'body', 'bodů')}, smažou se spolu s ním.`
+        : 'Seznam je prázdný.',
+      confirmLabel: 'Smazat seznam',
+      onConfirm: () => {
+        const index = todo.findIndex(l => l.id === list.id)
+        setTodo(prev => prev.filter(l => l.id !== list.id))
+        if (selectedList === list.id) setSelectedList(null)
+        showToast(`Seznam „${list.name}“ smazán`, () =>
+          setTodo(prev => {
+            const next = [...prev]
+            next.splice(Math.min(index, next.length), 0, list)
+            return next
+          })
+        )
+      },
+    })
+  }
+
+  function handleAddItems(listId, texts) {
+    const items = texts.map(text => ({ id: generateId(), text, done: false, doneAt: null }))
+    updateList(listId, l => ({ ...l, items: [...l.items, ...items] }))
+  }
+
+  function handleUpdateItem(listId, itemId, patch) {
+    updateList(listId, l => ({ ...l, items: l.items.map(i => (i.id === itemId ? { ...i, ...patch } : i)) }))
+  }
+
+  function handleToggleItem(listId, itemId) {
+    updateList(listId, l => ({
+      ...l,
+      items: l.items.map(i => (i.id === itemId ? { ...i, done: !i.done, doneAt: i.done ? null : new Date().toISOString() } : i)),
+    }))
+  }
+
+  // silent = bez upozornění (prázdný bod smazaný po vymazání textu)
+  function handleDeleteItem(listId, item, silent = false) {
+    const list = todo.find(l => l.id === listId)
+    const index = list ? list.items.findIndex(i => i.id === item.id) : -1
+    updateList(listId, l => ({ ...l, items: l.items.filter(i => i.id !== item.id) }))
+    if (silent || !item.text.trim()) return
+    showToast(`„${item.text}“ smazáno`, () =>
+      updateList(listId, l => {
+        const items = [...l.items]
+        items.splice(index < 0 ? items.length : Math.min(index, items.length), 0, item)
+        return { ...l, items }
+      })
+    )
+  }
+
+  function handleClearDone(listId) {
+    const list = todo.find(l => l.id === listId)
+    if (!list) return
+    const removed = list.items.filter(i => i.done)
+    if (!removed.length) return
+    const before = list.items
+    updateList(listId, l => ({ ...l, items: l.items.filter(i => !i.done) }))
+    showToast(`${removed.length} ${plural(removed.length, 'hotový bod smazán', 'hotové body smazány', 'hotových bodů smazáno')}`, () =>
+      updateList(listId, l => {
+        // vrátí původní pořadí, body přidané mezitím zůstanou na konci
+        const known = new Set(before.map(i => i.id))
+        return { ...l, items: [...before, ...l.items.filter(i => !known.has(i.id))] }
+      })
+    )
+  }
+
+  // Přetažení bodu: ze seznamu fromId do seznamu toId, před bod beforeId (null = za poslední nehotový)
+  function handleMoveItem(fromId, itemId, toId, beforeId) {
+    if (itemId === beforeId) return
+    setTodo(prev => {
+      const item = prev.find(l => l.id === fromId)?.items.find(i => i.id === itemId)
+      if (!item) return prev
+      return prev.map(l => {
+        let items = l.id === fromId ? l.items.filter(i => i.id !== itemId) : l.items
+        if (l.id === toId) {
+          items = [...items]
+          let index = beforeId ? items.findIndex(i => i.id === beforeId) : -1
+          if (index === -1) index = items.map(i => i.done).lastIndexOf(false) + 1
+          items.splice(index, 0, item)
+        }
+        return items === l.items ? l : { ...l, items }
+      })
+    })
+  }
+
+  function handleNewList() {
+    setView('todo')
+    setSelectedList(null)
+    setFocusNewList(true)
+  }
+
   // ---------------------------------------------------------------- Záloha
   function handleExport() {
-    exportBackup({ clients, columns, tasks })
+    exportBackup({ clients, columns, tasks, todo })
   }
 
   function handleImport(file) {
@@ -246,12 +359,13 @@ export default function App() {
       }
       setConfirm({
         title: 'Nahrát data ze zálohy?',
-        message: `Záloha obsahuje ${data.clients.length} klientů, ${data.columns.length} sloupců a ${data.tasks.length} úkolů.\nSoučasná data se nahradí. Doporučujeme si je nejdřív stáhnout.`,
+        message: `Záloha obsahuje ${data.clients.length} klientů, ${data.columns.length} sloupců, ${data.tasks.length} úkolů${data.todo ? ` a ${data.todo.length} seznamů v To do listu` : ''}.\nSoučasná data se nahradí${data.todo ? '' : ' (seznamy v To do listu zůstanou, záloha je neobsahuje)'}. Doporučujeme si je nejdřív stáhnout.`,
         confirmLabel: 'Nahradit data',
         onConfirm: () => {
           setClients(data.clients)
           setColumns(data.columns)
           setTasks(data.tasks)
+          if (data.todo) { setTodo(data.todo); setSelectedList(null) }
           setSelectedClient(null)
           showToast('Data ze zálohy nahrána')
         },
@@ -286,6 +400,11 @@ export default function App() {
   const overdueCount = activeTasks.filter(isOverdue).length
   const dateFilterActive = dateFrom || dateTo
   const clientName = selectedClient ? clientNames[selectedClient] : 'Všichni klienti'
+  const isTodo = view === 'todo'
+  const currentList = isTodo && selectedList ? todo.find(l => l.id === selectedList) : null
+  const todoScope = currentList ? [currentList] : todo
+  const todoOpen = todoScope.reduce((n, l) => n + l.items.filter(i => !i.done).length, 0)
+  const todoDone = todoScope.reduce((n, l) => n + l.items.filter(i => i.done).length, 0)
 
   const searchBox = (
     <div className={`flex items-center gap-2 border rounded-lg px-3 py-2 min-w-0 ${query ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 dark:border-indigo-700' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'}`}>
@@ -295,7 +414,7 @@ export default function App() {
         value={search}
         onChange={e => setSearch(e.target.value)}
         onKeyDown={e => e.key === 'Escape' && setSearch('')}
-        placeholder="Hledat úkol…"
+        placeholder={isTodo ? 'Hledat v seznamech…' : 'Hledat úkol…'}
         className="text-sm text-slate-600 dark:text-slate-200 outline-none bg-transparent flex-1 min-w-0 md:w-40 md:flex-none placeholder-slate-400 [&::-webkit-search-cancel-button]:hidden"
       />
       {query && (
@@ -361,7 +480,13 @@ export default function App() {
         view={view}
         onChangeView={v => { setView(v); closeSidebar() }}
         selectedClient={selectedClient}
-        onSelectClient={id => { setSelectedClient(id); closeSidebar() }}
+        onSelectClient={id => { setSelectedClient(id); if (view === 'todo') setView('board'); closeSidebar() }}
+        todo={todo}
+        selectedList={selectedList}
+        onSelectList={id => { setSelectedList(id); setView('todo'); closeSidebar() }}
+        onAddList={handleAddList}
+        onUpdateList={handleUpdateList}
+        onDeleteList={handleDeleteList}
         onAddClient={handleAddClient}
         onUpdateClient={handleUpdateClient}
         onDeleteClient={handleDeleteClient}
@@ -383,12 +508,15 @@ export default function App() {
 
             <div className="min-w-0 flex-1">
               <h1 className="text-lg md:text-xl font-bold text-slate-900 dark:text-slate-100 truncate">
-                {clientName}
+                {isTodo ? (currentList ? currentList.name : 'To do list') : clientName}
                 {view === 'archive' && <span className="text-slate-400 dark:text-slate-500 font-normal"> · Archiv</span>}
+                {currentList && <span className="text-slate-400 dark:text-slate-500 font-normal"> · To do list</span>}
               </h1>
               <div className="flex items-center gap-2 md:gap-3 mt-0.5 flex-wrap">
                 <span className="text-xs md:text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                  {view === 'board'
+                  {isTodo
+                    ? `${todoOpen} ${plural(todoOpen, 'bod', 'body', 'bodů')} k vyřízení · ${todoDone} ${plural(todoDone, 'hotový', 'hotové', 'hotových')}${currentList ? '' : ` · ${todo.length} ${plural(todo.length, 'seznam', 'seznamy', 'seznamů')}`}`
+                    : view === 'board'
                     ? `${boardTasks.length} ${plural(boardTasks.length, 'aktivní úkol', 'aktivní úkoly', 'aktivních úkolů')}`
                     : `${archiveList.length} ${plural(archiveList.length, 'splněný úkol', 'splněné úkoly', 'splněných úkolů')}`}
                 </span>
@@ -403,7 +531,7 @@ export default function App() {
 
             <div className="hidden md:flex items-center gap-3">
               {searchBox}
-              {dateFilter}
+              {!isTodo && dateFilter}
               {sortSelect}
             </div>
 
@@ -416,19 +544,19 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setModal({ defaults: { clientId: selectedClient || '' } })}
+              onClick={() => (isTodo ? handleNewList() : setModal({ defaults: { clientId: selectedClient || '' } }))}
               className="flex items-center gap-2 bg-green-600 text-white text-sm p-2 md:px-4 md:py-2 rounded-xl hover:bg-green-700 transition-colors font-medium flex-shrink-0"
-              title="Nový úkol"
+              title={isTodo ? 'Nový seznam' : 'Nový úkol'}
             >
               <Plus className="w-5 h-5 md:w-4 md:h-4" />
-              <span className="hidden md:inline">Nový úkol</span>
+              <span className="hidden md:inline">{isTodo ? 'Nový seznam' : 'Nový úkol'}</span>
             </button>
           </div>
 
           {/* Mobil: hledání a filtry pod nadpisem */}
           <div className="md:hidden flex items-center gap-2 mt-3">
             <div className="flex-1 min-w-0">{searchBox}</div>
-            <button
+            {!isTodo && <button
               onClick={() => setFiltersOpen(o => !o)}
               className={`relative p-2.5 rounded-lg border flex-shrink-0 ${
                 filtersOpen || filtersActive
@@ -439,9 +567,9 @@ export default function App() {
             >
               <SlidersHorizontal className="w-4 h-4" />
               {filtersActive && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white dark:border-slate-800" />}
-            </button>
+            </button>}
           </div>
-          {filtersOpen && (
+          {filtersOpen && !isTodo && (
             <div className="md:hidden flex flex-col gap-2 mt-2">
               {dateFilter}
               {sortSelect}
@@ -469,6 +597,25 @@ export default function App() {
               />
             </div>
           </>
+        ) : isTodo ? (
+          <div className="flex-1 overflow-auto px-4 md:px-8 py-4 md:py-6 pb-24">
+            <TodoView
+              lists={todo}
+              selectedListId={currentList ? currentList.id : null}
+              query={query}
+              focusNewList={focusNewList}
+              onNewListFocused={clearFocusNewList}
+              onAddList={handleAddList}
+              onUpdateList={handleUpdateList}
+              onDeleteList={handleDeleteList}
+              onAddItems={handleAddItems}
+              onUpdateItem={handleUpdateItem}
+              onToggleItem={handleToggleItem}
+              onDeleteItem={handleDeleteItem}
+              onClearDone={handleClearDone}
+              onMoveItem={handleMoveItem}
+            />
+          </div>
         ) : (
           <div className="flex-1 overflow-auto px-4 md:px-8 py-4 md:py-6">
             <ArchiveView

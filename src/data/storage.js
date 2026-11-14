@@ -93,6 +93,27 @@ const KEYS = {
   columns: 'ppc_columns',
   version: 'ppc_version',
   backupV1: 'ppc_backup_v1',
+  todo: 'ppc_todo',
+}
+
+// ---------------------------------------------------------------------------
+// To do list: samostatné seznamy (podsekce) s body, nezávislé na úkolech a klientech
+//   TodoList: { id, name, color, doneOpen, items: [{ id, text, done, doneAt }] }
+//   Pořadí items = ruční pořadí bodů. Hotové body se zobrazují dole.
+// ---------------------------------------------------------------------------
+export function normalizeTodo(lists) {
+  if (!Array.isArray(lists)) return []
+  return lists
+    .filter(l => l && l.id)
+    .map(l => ({
+      name: '',
+      color: 'gray',
+      doneOpen: true,
+      ...l,
+      items: (Array.isArray(l.items) ? l.items : [])
+        .filter(i => i && i.id)
+        .map(i => ({ text: '', done: false, doneAt: null, ...i })),
+    }))
 }
 
 export const DEFAULT_COLUMNS = [
@@ -183,22 +204,25 @@ export function loadState() {
     tasks = tasks.map(t => normalizeTask(t, columns))
   }
 
-  saveState({ clients, columns, tasks })
-  return { clients, columns, tasks }
+  const todo = normalizeTodo(readJSON(KEYS.todo))
+
+  saveState({ clients, columns, tasks, todo })
+  return { clients, columns, tasks, todo }
 }
 
-export function saveState({ clients, columns, tasks }) {
+export function saveState({ clients, columns, tasks, todo }) {
   if (clients) writeJSON(KEYS.clients, clients)
   if (columns) writeJSON(KEYS.columns, columns)
   if (tasks) writeJSON(KEYS.tasks, tasks)
+  if (todo) writeJSON(KEYS.todo, todo)
   localStorage.setItem(KEYS.version, String(DATA_VERSION))
 }
 
 // ---------------------------------------------------------------------------
 // Záloha do souboru a obnova
 // ---------------------------------------------------------------------------
-export function exportBackup({ clients, columns, tasks }) {
-  const data = { app: 'client-manager', version: DATA_VERSION, exportedAt: new Date().toISOString(), clients, columns, tasks }
+export function exportBackup({ clients, columns, tasks, todo }) {
+  const data = { app: 'client-manager', version: DATA_VERSION, exportedAt: new Date().toISOString(), clients, columns, tasks, todo }
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -208,8 +232,15 @@ export function exportBackup({ clients, columns, tasks }) {
   URL.revokeObjectURL(url)
 }
 
-// Vrátí { clients, columns, tasks } nebo vyhodí chybu s českou hláškou.
+// Vrátí { clients, columns, tasks, todo } nebo vyhodí chybu s českou hláškou.
+// todo je null, pokud záloha seznamy neobsahuje (starší záloha) – současné seznamy pak zůstanou.
 export function parseBackup(text) {
+  const result = parseTasksBackup(text)
+  const data = JSON.parse(text)
+  return { ...result, todo: Array.isArray(data.todo) ? normalizeTodo(data.todo) : null }
+}
+
+function parseTasksBackup(text) {
   let data
   try {
     data = JSON.parse(text)
