@@ -11,6 +11,10 @@ npm run preview  # Preview production build
 npm run lint     # ESLint
 ```
 
+## Deployment
+
+Hosted on Vercel (project `freelance-manager`, live at https://freelance-manager-one.vercel.app). Vercel's GitHub integration builds and deploys production automatically on every push to `main` of `github.com/daavidsv5/freelance-manager` — there is no Vercel CLI or `.vercel` link locally. A push to `main` therefore goes live; work on a feature branch and merge only when the user asks to deploy. Check the result with `gh api repos/daavidsv5/freelance-manager/commits/<sha>/status` (context `Vercel`). Data stays in each browser's `localStorage`, so deploys never touch user data.
+
 ## Architecture
 
 **Stack:** Vite + React (JSX, no TypeScript), Tailwind CSS v3 with `darkMode: 'class'`, Lucide React icons.
