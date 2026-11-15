@@ -37,13 +37,24 @@ function saveSynced(userId, rev, data) {
   localStorage.setItem(META_KEY, JSON.stringify({ userId, rev }))
 }
 
+// Odložená data zařízení z doby před prvním přihlášením (null = nejsou)
+function readLocalBackup() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(BACKUP_KEY))
+    if (!raw || !Array.isArray(raw.tasks)) return null
+    return { savedAt: raw.savedAt, data: normalizeData(raw) }
+  } catch {
+    return null
+  }
+}
+
 function errorMessage(err) {
   const msg = err?.message || String(err)
   if (/failed to fetch|network|load failed/i.test(msg)) return 'Nepodařilo se spojit se serverem.'
   return msg
 }
 
-function createEngine({ getState, applyData, setStatus, setError }) {
+function createEngine({ getState, applyData, setStatus, setError, onBackup }) {
   let userId = null
   let queue = Promise.resolve()
 
@@ -111,6 +122,7 @@ function createEngine({ getState, applyData, setStatus, setError }) {
       if (!base) {
         localStorage.setItem(BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), ...pickData(local) }))
         applyRemote(uid, remote)
+        onBackup()
         break
       }
 
@@ -166,7 +178,7 @@ function createEngine({ getState, applyData, setStatus, setError }) {
   }
 }
 
-function ensureEngine(engineRef, stateRef, applyRef, setStatus, setError) {
+function ensureEngine(engineRef, stateRef, applyRef, setStatus, setError, setLocalBackup) {
   if (!supabase) return null
   if (!engineRef.current) {
     engineRef.current = createEngine({
@@ -174,6 +186,7 @@ function ensureEngine(engineRef, stateRef, applyRef, setStatus, setError) {
       applyData: data => applyRef.current(data),
       setStatus,
       setError,
+      onBackup: () => setLocalBackup(readLocalBackup()),
     })
   }
   return engineRef.current
@@ -185,6 +198,7 @@ export function useCloudSync(state, applyData) {
   const [authReady, setAuthReady] = useState(!supabase)
   const [status, setStatus] = useState('idle') // idle | syncing | synced | offline | error
   const [error, setError] = useState('')
+  const [localBackup, setLocalBackup] = useState(readLocalBackup)
 
   const stateRef = useRef(state)
   const applyRef = useRef(applyData)
@@ -195,7 +209,7 @@ export function useCloudSync(state, applyData) {
 
   // Synchronizace se vytváří až v efektu (ne během vykreslení), pak se drží v refu
   const engineRef = useRef(null)
-  const getEngine = () => ensureEngine(engineRef, stateRef, applyRef, setStatus, setError)
+  const getEngine = () => ensureEngine(engineRef, stateRef, applyRef, setStatus, setError, setLocalBackup)
 
   const userId = session?.user?.id ?? null
 
@@ -211,7 +225,7 @@ export function useCloudSync(state, applyData) {
 
   // Po přihlášení: první synchronizace, živé změny z jiných zařízení, návrat do aplikace, připojení k síti
   useEffect(() => {
-    const engine = ensureEngine(engineRef, stateRef, applyRef, setStatus, setError)
+    const engine = ensureEngine(engineRef, stateRef, applyRef, setStatus, setError, setLocalBackup)
     if (!engine) return
     engine.setUser(userId)
     if (!userId) return
@@ -242,7 +256,7 @@ export function useCloudSync(state, applyData) {
   // Lokální změna: po krátké pauze se odešle do cloudu
   const { clients, columns, tasks, todo } = state
   useEffect(() => {
-    const engine = ensureEngine(engineRef, stateRef, applyRef, setStatus, setError)
+    const engine = ensureEngine(engineRef, stateRef, applyRef, setStatus, setError, setLocalBackup)
     if (!engine || !userId || !engine.isDirty()) return
     const t = setTimeout(() => engine.run(), 800)
     return () => clearTimeout(t)
@@ -269,5 +283,13 @@ export function useCloudSync(state, applyData) {
     signIn,
     signOut,
     retry: () => getEngine()?.run(),
+    localBackup,
+    // Odložená data se po obnovení nebo zahození jen přejmenují, aby se nedala přepsat
+    clearLocalBackup() {
+      const raw = localStorage.getItem(BACKUP_KEY)
+      if (raw) localStorage.setItem(`${BACKUP_KEY}_${Date.now()}`, raw)
+      localStorage.removeItem(BACKUP_KEY)
+      setLocalBackup(null)
+    },
   }
 }

@@ -59,7 +59,29 @@ function LoginForm({ onSignIn, onCancel }) {
   )
 }
 
-export default function SyncPanel({ cloud }) {
+function BackupNotice({ backup, onRestore, onDiscard }) {
+  const n = backup.data.tasks.length
+  const when = backup.savedAt
+    ? new Date(backup.savedAt).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : ''
+  return (
+    <div className="mt-2 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+      <p className="text-[11px] text-amber-800 dark:text-amber-200 leading-snug">
+        Na tomto zařízení jsou odložená data z doby před přihlášením ({when}, {n} úkolů).
+      </p>
+      <div className="flex gap-1 mt-2">
+        <button onClick={onRestore} className="flex-1 bg-amber-600 text-white text-xs py-1.5 rounded-lg hover:bg-amber-700 transition-colors">
+          Obnovit
+        </button>
+        <button onClick={onDiscard} className="flex-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xs py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors">
+          Zahodit
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export default function SyncPanel({ cloud, onRestoreBackup, onDiscardBackup }) {
   const [loginOpen, setLoginOpen] = useState(false)
   if (!cloud.enabled || !cloud.authReady) return null
 
@@ -101,6 +123,9 @@ export default function SyncPanel({ cloud }) {
             <LogOut className="w-3 h-3" /> Odhlásit
           </button>
         </div>
+        {cloud.localBackup && (
+          <BackupNotice backup={cloud.localBackup} onRestore={onRestoreBackup} onDiscard={onDiscardBackup} />
+        )}
       </div>
     )
   }

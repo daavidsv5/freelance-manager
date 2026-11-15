@@ -7,8 +7,9 @@ import Dashboard from './components/Dashboard'
 import ArchiveView from './components/ArchiveView'
 import ConfirmDialog from './components/ConfirmDialog'
 import TodoView from './components/TodoView'
-import { loadState, saveState, generateId, exportBackup, parseBackup } from './data/storage'
+import { loadState, saveState, generateId, exportBackup, parseBackup, normalizeData } from './data/storage'
 import { useCloudSync } from './data/useCloudSync'
+import { unionData } from './data/merge'
 import { nextFreeColor } from './data/clientColors'
 import { advanceDueDate, isOverdue, toISODate } from './data/dates'
 
@@ -385,6 +386,40 @@ export default function App() {
     })
   }
 
+  // ---------------------------------------------------------------- Odložená data z doby před přihlášením
+  function handleRestoreLocalBackup() {
+    const backup = cloud.localBackup
+    if (!backup) return
+    const current = { clients, columns, tasks, todo }
+    const merged = normalizeData(unionData(backup.data, current))
+    const currentById = new Map(tasks.map(t => [t.id, t]))
+    const added = backup.data.tasks.filter(t => !currentById.has(t.id)).length
+    const changed = backup.data.tasks.filter(t => currentById.has(t.id) && JSON.stringify(currentById.get(t.id)) !== JSON.stringify(t)).length
+    const when = backup.savedAt ? new Date(backup.savedAt).toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+    setConfirm({
+      title: 'Obnovit data z doby před přihlášením?',
+      message: `Odložená data tohoto zařízení (${when}) obsahují ${backup.data.tasks.length} ${plural(backup.data.tasks.length, 'úkol', 'úkoly', 'úkolů')}.\n`
+        + `Přidá se ${added} ${plural(added, 'úkol', 'úkoly', 'úkolů')}, které teď chybí, a u ${changed} ${plural(changed, 'úkolu', 'úkolů', 'úkolů')} se vrátí stav z té doby. `
+        + 'Chybějící klienti, sloupce a seznamy se také doplní. Nic se nesmaže a změna se uloží i do cloudu.',
+      confirmLabel: 'Obnovit',
+      danger: false,
+      onConfirm: () => {
+        applyCloudData(merged)
+        cloud.clearLocalBackup()
+        showToast('Data obnovena', () => applyCloudData(current))
+      },
+    })
+  }
+
+  function handleDiscardLocalBackup() {
+    setConfirm({
+      title: 'Zahodit odložená data?',
+      message: 'Data z doby před přihlášením na tomto zařízení se už nebudou nabízet k obnovení.',
+      confirmLabel: 'Zahodit',
+      onConfirm: () => cloud.clearLocalBackup(),
+    })
+  }
+
   // ---------------------------------------------------------------- Filtry
   const clientNames = Object.fromEntries(clients.map(c => [c.id, c.name]))
   const query = search.trim().toLowerCase()
@@ -505,6 +540,8 @@ export default function App() {
         onExport={handleExport}
         onImport={handleImport}
         cloud={cloud}
+        onRestoreBackup={handleRestoreLocalBackup}
+        onDiscardBackup={handleDiscardLocalBackup}
       />
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">

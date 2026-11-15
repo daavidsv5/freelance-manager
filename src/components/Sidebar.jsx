@@ -64,7 +64,7 @@ function NavButton({ active, onClick, icon, children, badge }) {
 export default function Sidebar({
   clients, tasks, view, onChangeView, selectedClient, onSelectClient,
   onAddClient, onUpdateClient, onDeleteClient, onExport, onImport, open, onClose,
-  todo, selectedList, onSelectList, onAddList, onUpdateList, onDeleteList, cloud,
+  todo, selectedList, onSelectList, onAddList, onUpdateList, onDeleteList, cloud, onRestoreBackup, onDiscardBackup,
 }) {
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -251,7 +251,7 @@ export default function Sidebar({
       </nav>
 
       <div className="px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-slate-200 dark:border-slate-700">
-        <SyncPanel cloud={cloud} />
+        <SyncPanel cloud={cloud} onRestoreBackup={onRestoreBackup} onDiscardBackup={onDiscardBackup} />
         <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-2 mb-1.5">Záloha dat</p>
         <div className="flex gap-1">
           <button

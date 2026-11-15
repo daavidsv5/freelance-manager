@@ -37,6 +37,15 @@ function mergeCollection(base, local, remote) {
   return result
 }
 
+// Sjednocení dvou verzí bez společného základu (obnova odložených dat): nic se nesmaže,
+// položky z preferred mají přednost, položky jen z other se přidají na konec.
+export function unionData(preferred, other) {
+  return Object.fromEntries(COLLECTIONS.map(k => {
+    const ids = new Set((preferred[k] || []).map(x => x.id))
+    return [k, [...(preferred[k] || []), ...(other[k] || []).filter(x => !ids.has(x.id))]]
+  }))
+}
+
 export function mergeData(base, local, remote) {
   return Object.fromEntries(COLLECTIONS.map(k => [k, mergeCollection(base[k], local[k], remote[k])]))
 }
