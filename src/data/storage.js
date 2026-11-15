@@ -241,21 +241,23 @@ export function parseBackup(text) {
   } catch {
     throw new Error('Soubor není platný JSON.')
   }
-  return { ...normalizeTasksData(data), todo: Array.isArray(data.todo) ? normalizeTodo(data.todo) : null }
+  return { ...normalizeTasksData(data, true), todo: Array.isArray(data.todo) ? normalizeTodo(data.todo) : null }
 }
 
-// Data uložená v cloudu (stejný tvar jako záloha). Vrátí úplná a normalizovaná data.
+// Data v aktuální verzi (cloud, sloučená nebo odložená data). Vrátí úplná a normalizovaná data.
+// Nikdy je nepřevádí jako verzi 1 – to dělá jen import souboru se zálohou.
 export function normalizeData(data) {
-  return { ...normalizeTasksData(data), todo: normalizeTodo(data?.todo) }
+  return { ...normalizeTasksData(data, false), todo: normalizeTodo(data?.todo) }
 }
 
-function normalizeTasksData(data) {
+function normalizeTasksData(data, allowV1) {
   if (!Array.isArray(data?.clients) || !Array.isArray(data?.tasks)) {
     throw new Error('Soubor neobsahuje klienty a úkoly z této aplikace.')
   }
-  if (!Array.isArray(data.columns) || Number(data.version || 1) < 2) {
+  if (allowV1 && (!Array.isArray(data.columns) || Number(data.version || 1) < 2)) {
     return migrateFromV1(data.clients, data.tasks)
   }
+  if (!Array.isArray(data.columns)) data = { ...data, columns: [] }
   const columns = data.columns.length ? data.columns : DEFAULT_COLUMNS
   return {
     clients: data.clients.map(c => ({ ...c, color: c.color || 'gray' })),

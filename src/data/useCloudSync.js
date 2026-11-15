@@ -42,7 +42,9 @@ function readLocalBackup() {
   try {
     const raw = JSON.parse(localStorage.getItem(BACKUP_KEY))
     if (!raw || !Array.isArray(raw.tasks)) return null
-    return { savedAt: raw.savedAt, data: normalizeData(raw) }
+    // Odložená data jsou vždy v aktuální verzi; bez čísla verze by je normalizeData převedlo
+    // jako data verze 1 (výchozí sloupce, vše mimo archiv)
+    return { savedAt: raw.savedAt, data: normalizeData({ ...raw, version: DATA_VERSION }) }
   } catch {
     return null
   }
@@ -120,7 +122,7 @@ function createEngine({ getState, applyData, setStatus, setError, onBackup }) {
 
       // První synchronizace na tomto zařízení: platí data z cloudu, lokální se odloží do zálohy
       if (!base) {
-        localStorage.setItem(BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), ...pickData(local) }))
+        localStorage.setItem(BACKUP_KEY, JSON.stringify({ version: DATA_VERSION, savedAt: new Date().toISOString(), ...pickData(local) }))
         applyRemote(uid, remote)
         onBackup()
         break
