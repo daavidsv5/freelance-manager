@@ -2,6 +2,7 @@ import { Users, Plus, Briefcase, Pencil, Trash2, LayoutGrid, Archive, Download, 
 import { useRef, useState } from 'react'
 import { getColor, nextFreeColor } from '../data/clientColors'
 import ColorPicker from './ColorPicker'
+import SyncPanel from './SyncPanel'
 
 function ClientForm({ initialName = '', initialColor, submitLabel, onSubmit, onCancel, placeholder = 'Název klienta' }) {
   const [name, setName] = useState(initialName)
@@ -63,7 +64,7 @@ function NavButton({ active, onClick, icon, children, badge }) {
 export default function Sidebar({
   clients, tasks, view, onChangeView, selectedClient, onSelectClient,
   onAddClient, onUpdateClient, onDeleteClient, onExport, onImport, open, onClose,
-  todo, selectedList, onSelectList, onAddList, onUpdateList, onDeleteList,
+  todo, selectedList, onSelectList, onAddList, onUpdateList, onDeleteList, cloud,
 }) {
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -250,6 +251,7 @@ export default function Sidebar({
       </nav>
 
       <div className="px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-slate-200 dark:border-slate-700">
+        <SyncPanel cloud={cloud} />
         <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-2 mb-1.5">Záloha dat</p>
         <div className="flex gap-1">
           <button

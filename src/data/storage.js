@@ -85,7 +85,7 @@ export const SEED_TASKS = [
 //   2 = vlastní sloupce (Task.columnId), barva uložená u klienta, archiv (Task.archived),
 //       podúkoly (Task.checklist)
 // ---------------------------------------------------------------------------
-const DATA_VERSION = 2
+export const DATA_VERSION = 2
 
 const KEYS = {
   clients: 'ppc_clients',
@@ -235,18 +235,21 @@ export function exportBackup({ clients, columns, tasks, todo }) {
 // Vrátí { clients, columns, tasks, todo } nebo vyhodí chybu s českou hláškou.
 // todo je null, pokud záloha seznamy neobsahuje (starší záloha) – současné seznamy pak zůstanou.
 export function parseBackup(text) {
-  const result = parseTasksBackup(text)
-  const data = JSON.parse(text)
-  return { ...result, todo: Array.isArray(data.todo) ? normalizeTodo(data.todo) : null }
-}
-
-function parseTasksBackup(text) {
   let data
   try {
     data = JSON.parse(text)
   } catch {
     throw new Error('Soubor není platný JSON.')
   }
+  return { ...normalizeTasksData(data), todo: Array.isArray(data.todo) ? normalizeTodo(data.todo) : null }
+}
+
+// Data uložená v cloudu (stejný tvar jako záloha). Vrátí úplná a normalizovaná data.
+export function normalizeData(data) {
+  return { ...normalizeTasksData(data), todo: normalizeTodo(data?.todo) }
+}
+
+function normalizeTasksData(data) {
   if (!Array.isArray(data?.clients) || !Array.isArray(data?.tasks)) {
     throw new Error('Soubor neobsahuje klienty a úkoly z této aplikace.')
   }

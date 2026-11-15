@@ -8,6 +8,7 @@ import ArchiveView from './components/ArchiveView'
 import ConfirmDialog from './components/ConfirmDialog'
 import TodoView from './components/TodoView'
 import { loadState, saveState, generateId, exportBackup, parseBackup } from './data/storage'
+import { useCloudSync } from './data/useCloudSync'
 import { nextFreeColor } from './data/clientColors'
 import { advanceDueDate, isOverdue, toISODate } from './data/dates'
 
@@ -62,6 +63,17 @@ export default function App() {
   useEffect(() => {
     saveState({ clients, columns, tasks, todo })
   }, [clients, columns, tasks, todo])
+
+  // Synchronizace přes Supabase (data z cloudu nahradí lokální)
+  const applyCloudData = useCallback(data => {
+    setClients(data.clients)
+    setColumns(data.columns)
+    setTasks(data.tasks)
+    setTodo(data.todo)
+    setSelectedClient(prev => (prev && !data.clients.some(c => c.id === prev) ? null : prev))
+    setSelectedList(prev => (prev && !data.todo.some(l => l.id === prev) ? null : prev))
+  }, [])
+  const cloud = useCloudSync({ clients, columns, tasks, todo }, applyCloudData)
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
@@ -492,6 +504,7 @@ export default function App() {
         onDeleteClient={handleDeleteClient}
         onExport={handleExport}
         onImport={handleImport}
+        cloud={cloud}
       />
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">

@@ -21,6 +21,8 @@ Hosted on Vercel (project `freelance-manager`, live at https://freelance-manager
 
 **Persistence:** All data lives in `localStorage` — no backend. Keys: `ppc_clients`, `ppc_columns`, `ppc_tasks`, `ppc_todo`, `ppc_version` (currently `2`), `ppc_dark`. `loadState()` in `storage.js` writes seed data on first load and migrates v1 data (Task.status → columnId, tasks from "Hotovo" → archive, client color from index → stored `color`); before migrating it saves the original v1 data to `ppc_backup_v1`. App saves all four collections via one `useEffect` on every change. Users can download/upload a JSON backup from the sidebar (`exportBackup` / `parseBackup`, which also accepts v1 backups).
 
+**Cloud sync (Supabase):** Optional, enabled when `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are set (locally in `.env.local`, gitignored; on Vercel in project env vars for Production and Preview). Without them the app is purely local as before. Supabase project `kzbrxkcneopkpenslbqw`, table `public.app_state (user_id uuid pk → auth.users, data jsonb, updated_at)` with RLS (own row only) and realtime enabled; one row per user, `data` = `{ version, rev, savedAt, clients, columns, tasks, todo }`. Login is e-mail + password (sign-ups disabled in Supabase, the user is created in the dashboard), UI in `SyncPanel.jsx` in the sidebar footer. Logic in `src/data/useCloudSync.js`: localStorage stays the working copy; `ppc_sync` = `{ userId, rev }` of the cloud version the device is based on, `ppc_sync_base` = that version's data. `sync()` (serialized in a queue) fetches the row and then: empty cloud → upload local; first sync on the device → take cloud, local copy saved to `ppc_backup_pred_sync`; cloud unchanged → push local changes; cloud newer and no local changes → apply; both changed → 3-way merge per record (`src/data/merge.js`, local wins on same record). Pushes are conditional on `data->>rev` so a newer cloud version is never overwritten blindly. Triggers: login/session restore, local change (800 ms debounce), realtime change event, tab becoming visible/hidden, `online`.
+
 **State management:** Single `App.jsx` owns all state (`clients`, `columns`, `tasks`, view, filters, modal, confirm dialog, toast). All mutations use functional `setState(prev => …)` in App handlers passed down as props. No context, no external state library.
 
 **Data model (v2):**
@@ -48,6 +50,10 @@ Hosted on Vercel (project `freelance-manager`, live at https://freelance-manager
 - `src/data/storage.js` — load/save, v1→v2 migration, seed data, backup export/import, `generateId()`
 - `src/data/dates.js` — date helpers, recurrence (`advanceDueDate`), `isOverdue`
 - `src/data/clientColors.js` — shared color palette
+- `src/data/supabase.js` — Supabase client (null when env vars are missing)
+- `src/data/useCloudSync.js` — login state and cloud sync engine
+- `src/data/merge.js` — 3-way merge of local and cloud data
+- `src/components/SyncPanel.jsx` — login form and sync status in the sidebar
 - `src/components/Sidebar.jsx` — Nástěnka/Archiv switch, clients (add with color, edit, delete), backup buttons
 - `src/components/Dashboard.jsx` — stats (active, overdue, due today, next 7 days, done in 7 days, week progress)
 - `src/components/KanbanBoard.jsx` — columns (add, rename, color, move, delete), quick add, drag & drop
