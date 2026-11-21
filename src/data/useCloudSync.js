@@ -106,7 +106,8 @@ function createEngine({ getState, applyData, setStatus, setError, onBackup }) {
       return
     }
     setStatus('syncing')
-    for (let attempt = 0; attempt < 4; attempt++) {
+    let done = false
+    for (let attempt = 0; attempt < 4 && !done; attempt++) {
       const remote = await fetchRemote(uid)
       if (uid !== userId) return // mezitím odhlášeno
       const local = getState()
@@ -116,7 +117,7 @@ function createEngine({ getState, applyData, setStatus, setError, onBackup }) {
 
       // Cloud je prázdný: nahrají se data z tohoto zařízení
       if (!remote) {
-        if (await push(uid, local, null)) break
+        done = await push(uid, local, null)
         continue
       }
 
@@ -125,14 +126,15 @@ function createEngine({ getState, applyData, setStatus, setError, onBackup }) {
         localStorage.setItem(BACKUP_KEY, JSON.stringify({ version: DATA_VERSION, savedAt: new Date().toISOString(), ...pickData(local) }))
         applyRemote(uid, remote)
         onBackup()
-        break
+        done = true
+        continue
       }
 
       const dirty = localJson !== base
 
       // Cloud se nezměnil: případně odešlou lokální změny
       if (remote.rev === meta.rev) {
-        if (!dirty || (await push(uid, local, meta.rev))) break
+        done = !dirty || (await push(uid, local, meta.rev))
         continue
       }
 
@@ -140,16 +142,19 @@ function createEngine({ getState, applyData, setStatus, setError, onBackup }) {
       if (!dirty) {
         if (serialize(getState()) !== localJson) continue // uživatel mezitím něco změnil
         applyRemote(uid, remote)
-        break
+        done = true
+        continue
       }
 
       // Změny na obou stranách: sloučí se
       const merged = normalizeData(mergeData(JSON.parse(base), pickData(local), pickData(remote)))
       if (await push(uid, merged, remote.rev)) {
         applyData(merged)
-        break
+        done = true
       }
     }
+    // Dřív se tu po čtyřech neúspěšných pokusech ukázalo „Synchronizováno“, i když se nic neuložilo
+    if (!done) throw new Error('Data se nepodařilo uložit, cloud se mezitím měnil. Zkuste to znovu.')
     setError('')
     setStatus('synced')
   }
@@ -236,20 +241,33 @@ export function useCloudSync(state, applyData) {
     const channel = supabase
       .channel(`app_state_${userId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: TABLE, filter: `user_id=eq.${userId}` }, () => engine.run())
-      .subscribe()
+      // Po obnovení spojení (spánek počítače, změna sítě) se změny z doby výpadku nepošlou znovu,
+      // proto se po každém připojení kanálu stav dotáhne z cloudu
+      .subscribe(status => {
+        if (status === 'SUBSCRIBED') engine.run()
+      })
 
     const onVisibility = () => {
       if (document.visibilityState === 'visible' || engine.isDirty()) engine.run()
     }
+    // Na počítači zůstává karta „viditelná“ i při přepnutí do jiného okna, proto i návrat do okna
+    const onFocus = () => engine.run()
     const onOnline = () => engine.run()
     const onOffline = () => setStatus('offline')
     document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
     window.addEventListener('online', onOnline)
     window.addEventListener('offline', onOffline)
+    // Pojistka, kdyby živé změny nedorazily: jednou za minutu kontrola, dokud je aplikace otevřená
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') engine.run()
+    }, 60000)
 
     return () => {
       supabase.removeChannel(channel)
+      clearInterval(poll)
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
       window.removeEventListener('online', onOnline)
       window.removeEventListener('offline', onOffline)
     }
